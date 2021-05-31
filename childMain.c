@@ -15,6 +15,11 @@
 #include "structs.h"
 #include "functions.h"
 
+CyclicBuffer cBuf;
+pthread_mutex_t mtx;
+pthread_cond_t condNonEmpty;
+pthread_cond_t condNonFull;
+
 int main(int argc, char* argv[]) {
     int port, numThreads, socketBufferSize, cyclicBufferSize, bloomSize;
 
@@ -42,15 +47,51 @@ int main(int argc, char* argv[]) {
     // Get paths (after first 10 args)
     for (int i=11; i<argc; i++) {
         path[index] = argv[i];
-        printf("path[%d]=%s\n", index, path[index]);
+        // printf("path[%d]=%s\n", index, path[index]);
         index++;
     }
-    // Store the files of every path/country directory
+    // Structure to store Monitor's directories & files info
     MonitorDir* monitorDir = NULL;
     readDirs(&monitorDir, path, pathsNumber);
+    // printMonitorDirList(monitorDir);
 
-    printMonitorDirList(monitorDir);
+    ////////////////////////////////////////////////////////////////////////////////////
+        initCyclicBuffer(&cBuf, cyclicBufferSize);
+        pthread_mutex_init(&mtx, 0);
+        pthread_cond_init(&condNonEmpty, 0);
+        pthread_cond_init(&condNonFull, 0);
 
+        pthread_t threads[numThreads];
+        for (int i=0; i<numThreads; i++) {
+            pthread_create(&threads[i], NULL, threadConsumer, NULL);
+        }
+
+        // INSERT SHIT 
+        MonitorDir* current = monitorDir;
+        while (current) {
+            // // Initialise cyclic buffer's paths memory
+            // cBuf.paths = malloc( sizeof(char*)*(current->fileCount) );
+            
+            for (int i=0; i<current->fileCount; i++) {
+                insertToCyclicBuffer(&cBuf, current->files[i]);
+                pthread_cond_broadcast(&condNonEmpty);
+                printf("Broadcasted\n");
+            }
+            // free(cBuf.paths);
+            current = current->next;
+        } 
+
+        for (int i=0; i<numThreads; i++) {
+            // Unblock all threads
+            insertToCyclicBuffer(&cBuf, "finish");
+            pthread_cond_signal(&condNonEmpty);
+        }
+
+        for (int i=0; i<numThreads; i++) {
+            pthread_join(threads[i], 0);
+        }
+
+    ////////////////////////////////////////////////////////////////////////////////////
     struct sockaddr_in servAddr;
     struct sockaddr_in clientAddr;
     unsigned int clientLength = sizeof(clientAddr);
@@ -94,32 +135,12 @@ int main(int argc, char* argv[]) {
         perror("Error with gethostbyname");
         exit(1);
     }
-
-
-
-
     // Report ready
     write(newSockfd, "1", 1);
 
     fd_set incfds;
 
     while (1) {
-        // if ( (read(newSockfd, buffer, 1)) == -1 ) {
-        //     // printf("Reading -1\n");
-        //     // sleep(1);
-        //     continue;
-        // }
-        // if (buffer[0] == 'p') {
-        //     printf("Message received from Server %d\n", (int)getpid());
-        //     write(newSockfd, "1", 1);
-        //     // close(sockfd);
-        //     // close(newSockfd);
-        // }
-        // if (buffer[0] == 'e') {
-        //     close(sockfd);
-        //     close(newSockfd);
-        // }
-
         FD_ZERO(&incfds);
         FD_SET(newSockfd, &incfds);
         // Select() on incfds
@@ -146,27 +167,34 @@ int main(int argc, char* argv[]) {
             if (buffer[0] == 'e') {
                 close(sockfd);
                 close(newSockfd);
+                // for (int i=0; i<numThreads; i++) {
+                //     pthread_join(threads[i], 0);
+                // }
+
+                freeCyclicBuffer(&cBuf);
                 freeMonitorDirList(monitorDir);
                 kill(getpid(), SIGKILL);
             }        
             FD_CLR(newSockfd, &incfds);
         }
     }
-    
 }
 
-//     // Open writing and reading named pipes
-//     int outfd;
-//     if ( (outfd = open(pipeWrite, O_WRONLY)) == -1 ) {
-//         perror("Problem opening writing pipe");
-//         exit(1);
-//     }
-//     int incfd;
-//     if ( (incfd = open(pipeRead, O_RDONLY)) == -1 ) {
-//         perror("Problem opening reading pipe");
-//         exit(1);
-//     }
-   
+void* threadConsumer (void* ptr) {
+    printf("=====================\n");
+    while (cBuf.pathCount <= 0) {
+        char* path;
+        if ( (!strcmp(extractFromCyclicBuffer(&cBuf, &path), "finish"))  ) {
+            return NULL;
+        }
+        printf("Thread %lu Extracted %s\n",(long)pthread_self(), path);
+        pthread_cond_signal(&condNonFull);
+    }
+    printf("=====================\n");
+    return NULL;
+}
+
+
 //     // Structure to store Monitor's directory info
 //     MonitorDir* monitorDir = NULL;
 //     // Structures to store records data

@@ -121,8 +121,13 @@ void freeMonitorDirList (MonitorDir* head);
 void insertExecvArgs(char* argsArray[], int port, char* numThreadsString, char* socketBufferSizeString, char* cyclicBufferSizeString, char* bloomSizeString, char* dir_path, ChildMonitor* childMonitor, int index, int length);
 void readDirs (MonitorDir** monitorDir, char** dirPath, int dirPathsNumber);
 void initCyclicBuffer (CyclicBuffer* cBuf, int cyclicBufferSize);
-void insertCyclicBuffer (CyclicBuffer* cBuf, char* path);
-char* extractCyclicBuffer (CyclicBuffer* cBuf, char** path);
+void insertToCyclicBuffer (CyclicBuffer* cBuf, char* path);
+char* extractFromCyclicBuffer (CyclicBuffer* cBuf, char** path);
 void freeCyclicBuffer (CyclicBuffer* cBuf);
+
+extern pthread_mutex_t mtx;
+extern pthread_cond_t condNonEmpty;
+extern pthread_cond_t condNonFull;
+void* threadConsumer (void* ptr);
 
 #endif

@@ -20,7 +20,7 @@ void readDirs (MonitorDir** monitorDir, char** dirPath, int dirPathsNumber) {
     // Iterate over all directories
     for (int i=0; i<dirPathsNumber; i++) {
 
-        printf("Iteration %d, trying %s\n", i, dirPath[i]);
+        // printf("Iteration %d, trying %s\n", i, dirPath[i]);
         if ( !(dir = opendir(dirPath[i])) ) {
             perror("Error with opening directory");
             exit(1);
@@ -43,9 +43,9 @@ void readDirs (MonitorDir** monitorDir, char** dirPath, int dirPathsNumber) {
         int j = 0;
         while ( (current = readdir(dir)) ) {
             if ( strcmp(current->d_name, ".") && strcmp(current->d_name, "..") ) {
-                files[j] = malloc(strlen(dirPath[i]) + strlen(current->d_name) + 1);
+                files[j] = malloc(strlen(dirPath[i]) + 1+ strlen(current->d_name) + 1);
                 strcpy(files[j], dirPath[i]);
-                // strcat(files[i], "/");
+                strcat(files[j], "/");
                 strcat(files[j], current->d_name);
                 j++;
             }

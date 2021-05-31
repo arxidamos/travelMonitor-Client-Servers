@@ -17,13 +17,13 @@ $(OUT): $(OBJS)
 	$(CC) -g $(OBJS) -o $(OUT)
 
 $(CHILD_OUT): $(CHILD_OBJS)
-	$(CC) -g $(CHILD_OBJS) -o $(CHILD_OUT)
+	$(CC) -g -pthread $(CHILD_OBJS) -o $(CHILD_OUT)
 
-child.o: childMain.c
-	$(CC) -pthread $(FLAGS) childMain.c
+childMain.o: childMain.c
+	$(CC) $(FLAGS) childMain.c
 
-travelMonitorClient.o:main.c
-	$(CC) -pthread $(FLAGS) main.c
+main.o:main.c
+	$(CC) $(FLAGS) main.c
 
 # mainFunctions.o:mainFunctions.c
 # 	$(CC) $(FLAGS) mainFunctions.c
@@ -40,8 +40,8 @@ travelMonitorClient.o:main.c
 # skipList.o:skipList.c
 # 	$(CC) $(FLAGS) skipList.c
 
-# monitorDirList.o:monitorDirList.c
-# 	$(CC) $(FLAGS) monitorDirList.c
+monitorDirList.o:monitorDirList.c
+	$(CC) $(FLAGS) monitorDirList.c
 
 # stats.o:stats.c
 # 	$(CC) $(FLAGS) stats.c	
@@ -58,8 +58,8 @@ travelMonitorClient.o:main.c
 parentAux.o:parentAux.c
 	$(CC) $(FLAGS) parentAux.c
 
-# childAux.o:childAux.c
-# 	$(CC) $(FLAGS) childAux.c
+childAux.o:childAux.c
+	$(CC) $(FLAGS) childAux.c
 
 clean:
 	rm -f $(OBJS) $(OUT) $(CHILD_OBJS) $(CHILD_OUT)

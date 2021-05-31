@@ -5,9 +5,9 @@
 #include "structs.h"
 #include "functions.h"
 
-// static pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
-// pthread_cond_t condNonEmpty;
-// pthread_cond_t condNonFull;
+pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t condNonEmpty;
+pthread_cond_t condNonFull;
 
 // Initialise the cylic buffer
 void initCyclicBuffer (CyclicBuffer* cBuf, int cyclicBufferSize) {
@@ -42,7 +42,7 @@ void insertToCyclicBuffer (CyclicBuffer* cBuf, char* path) {
 
     cBuf->paths[cBuf->end] = strdup(path);
 
-    printf("Thread %lu Inserted %s in position cBuf->paths[%d]\n", (long)pthread_self(), cBuf->paths[cBuf->end], cBuf->end);
+    printf("Thread %lu: Inserted [%s] at cBuf->paths[%d]\n", (long)pthread_self(), cBuf->paths[cBuf->end], cBuf->end);
                 
     
     pthread_mutex_unlock(&mtx);
@@ -59,14 +59,14 @@ char* extractFromCyclicBuffer (CyclicBuffer* cBuf, char** path) {
         // sleep(1);
     }
     // printf("Thread %lu stopped waiting, cause paths %d > 0\n", (long)pthread_self(), cBuf->pathCount);
-    printf("Thread %lu Extracting %s from position cBuf->paths[%d]\n", (long)pthread_self(), cBuf->paths[cBuf->start], cBuf->start);
+    // printf("Thread %lu Extracting %s from position cBuf->paths[%d]\n", (long)pthread_self(), cBuf->paths[cBuf->start], cBuf->start);
 
     // Extract path from cyclic buffer's 'start' position
     (*path) = malloc( strlen(cBuf->paths[cBuf->start]) + 1 );
     strcpy( (*path), cBuf->paths[cBuf->start] );
     // free(cBuf->paths[cBuf->start]);
     cBuf->start = (cBuf->start + 1) % (cBuf->size);
-    cBuf->pathCount--;   
+    cBuf->pathCount--;
 
     pthread_mutex_unlock(&mtx);
 

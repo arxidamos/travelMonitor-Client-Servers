@@ -16,12 +16,21 @@
 #include "functions.h"
 
 CyclicBuffer cBuf;
-pthread_mutex_t mtx;
-pthread_cond_t condNonEmpty;
-pthread_cond_t condNonFull;
+// pthread_mutex_t mtx;
+// pthread_cond_t condNonEmpty;
+// pthread_cond_t condNonFull;
+
+// Structures to store records data
+BloomFilter* bloomsHead;
+State* stateHead;
+Record* recordsHead;
+SkipList* skipVaccHead;
+SkipList* skipNonVaccHead;
+int bloomSize;
+
 
 int main(int argc, char* argv[]) {
-    int port, numThreads, socketBufferSize, cyclicBufferSize, bloomSize;
+    int port, numThreads, socketBufferSize, cyclicBufferSize;
 
     // Scan command line arguments
 	for (int i=0; i<argc; ++i) {
@@ -56,10 +65,24 @@ int main(int argc, char* argv[]) {
     // printMonitorDirList(monitorDir);
 
     ////////////////////////////////////////////////////////////////////////////////////
+
+               
+        // Structures to store records data
+        bloomsHead = NULL;
+        stateHead = NULL;
+        recordsHead = NULL;
+        skipVaccHead = NULL;
+        skipNonVaccHead = NULL;
+        // Seed the time generator
+        srand(time(NULL));
+        int accepted = 0;
+        int rejected = 0;
+
+
         initCyclicBuffer(&cBuf, cyclicBufferSize);
-        pthread_mutex_init(&mtx, 0);
-        pthread_cond_init(&condNonEmpty, 0);
-        pthread_cond_init(&condNonFull, 0);
+        pthread_mutex_init(&mtx, NULL);
+        pthread_cond_init(&condNonEmpty, NULL);
+        pthread_cond_init(&condNonFull, NULL);
 
         pthread_t threads[numThreads];
         for (int i=0; i<numThreads; i++) {
@@ -69,8 +92,6 @@ int main(int argc, char* argv[]) {
         // INSERT SHIT 
         MonitorDir* current = monitorDir;
         while (current) {
-            // // Initialise cyclic buffer's paths memory
-            // cBuf.paths = malloc( sizeof(char*)*(current->fileCount) );
             
             for (int i=0; i<current->fileCount; i++) {
                 insertToCyclicBuffer(&cBuf, current->files[i]);
@@ -89,8 +110,11 @@ int main(int argc, char* argv[]) {
 
         for (int i=0; i<numThreads; i++) {
             pthread_join(threads[i], 0);
+            printf("Thread [%d] joined\n", i);
         }
 
+        printRecordsList(recordsHead);
+        printBloomsList(bloomsHead);
     ////////////////////////////////////////////////////////////////////////////////////
     struct sockaddr_in servAddr;
     struct sockaddr_in clientAddr;
@@ -181,17 +205,30 @@ int main(int argc, char* argv[]) {
 }
 
 void* threadConsumer (void* ptr) {
-    printf("=====================\n");
-    while (cBuf.pathCount <= 0) {
-        char* path;
-        if ( (!strcmp(extractFromCyclicBuffer(&cBuf, &path), "finish"))  ) {
-            return NULL;
-        }
-        printf("Thread %lu Extracted %s\n",(long)pthread_self(), path);
+    printf("Thread %lu: begin=====================\n",(long)pthread_self());
+    // while (cBuf.pathCount >= 0) {
+    //     char* path;
+    //     if ( (!strcmp(extractFromCyclicBuffer(&cBuf, &path), "finish"))  ) {
+    //         return NULL;
+    //     }
+    //     printf("Thread %lu Extracted %s\n",(long)pthread_self(), path);
+    //     // processFile(path);
+    //     pthread_cond_signal(&condNonFull);
+    // }
+    // printf("=====================\n");
+    // return NULL;
+    char* path;
+    while ( (strcmp(extractFromCyclicBuffer(&cBuf, &path), "finish")) ) {
+        printf("Thread %lu: Extracted [%s]\n",(long)pthread_self(), path);
+        processFile(path);
+        printf("SIGNAL TO childMain\n");
         pthread_cond_signal(&condNonFull);
     }
-    printf("=====================\n");
+    // Wake up childMain one last time for each thread
+    pthread_cond_signal(&condNonFull);
+    printf("Thread %lu: exit=====================\n",(long)pthread_self());
     return NULL;
+
 }
 
 

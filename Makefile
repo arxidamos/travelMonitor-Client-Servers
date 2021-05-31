@@ -1,13 +1,11 @@
-OBJS = main.o parentAux.o # mainFunctions.o stateList.o recordList.o bloomFilter.o skipList.o stats.o communication.o parentSignals.o parentAux.o
-SOURCE = main.c parentAux.c #  mainFunctions.c stateList.c recordList.c bloomFilter.c skipList.c stats.c communication.c parentSignals.c parentAux.c
-CHILD_OBJS = childMain.o cyclicBuffer.o monitorDirList.o childAux.o
-# mainFunctions.o stateList.o recordList.o bloomFilter.o skipList.o communication.o monitorDirList.o stats.o childSignals.o childAux.o
-CHILD_SOURCE = childMain.c cyclicBuffer.c monitorDirList.c childAux.c
-#  mainFunctions.c stateList.c recordList.c bloomFilter.c skipList.c communication.c monitorDirList.c stats.c childSignals.c childAux.c 
+OBJS = main.o mainFunctions.o stateList.o recordList.o bloomFilter.o skipList.o stats.o communication.o parentAux.o
+SOURCE = main.c mainFunctions.c stateList.c recordList.c bloomFilter.c skipList.c stats.c communication.c parentAux.c
+CHILD_OBJS = childMain.o cyclicBuffer.o mainFunctions.o stateList.o recordList.o bloomFilter.o skipList.o communication.o monitorDirList.o stats.o childAux.o
+CHILD_SOURCE = childMain.c cyclicBuffer.c mainFunctions.c stateList.c recordList.c bloomFilter.c skipList.c communication.c monitorDirList.c stats.c childAux.c 
 HEADER = structs.h functions.h
 OUT = travelMonitorClient
 CHILD_OUT = monitorServer
-# DIRS = ./named_pipes ./log_files
+DIRS = ./log_files
 CC = gcc
 FLAGS = -g3 -c -Wall
 

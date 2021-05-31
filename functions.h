@@ -124,10 +124,18 @@ void initCyclicBuffer (CyclicBuffer* cBuf, int cyclicBufferSize);
 void insertToCyclicBuffer (CyclicBuffer* cBuf, char* path);
 char* extractFromCyclicBuffer (CyclicBuffer* cBuf, char** path);
 void freeCyclicBuffer (CyclicBuffer* cBuf);
+void processFile (char* filePath);
 
 extern pthread_mutex_t mtx;
 extern pthread_cond_t condNonEmpty;
 extern pthread_cond_t condNonFull;
 void* threadConsumer (void* ptr);
+
+extern BloomFilter* bloomsHead;
+extern State* stateHead;
+extern Record* recordsHead;
+extern SkipList* skipVaccHead;
+extern SkipList* skipNonVaccHead;
+extern int bloomSize;
 
 #endif

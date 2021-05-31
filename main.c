@@ -126,7 +126,6 @@ int main(int argc, char **argv) {
         int length = pathArgs + restofArgs;
         char* argsArray[length];
 
-        printf("FUCKING LENGTH OF ARGSARRAY = %d+%d\n", pathArgs, restofArgs);
         insertExecvArgs(argsArray, port, numThreadsString, socketBufferSizeString, cyclicBufferSizeString, bloomSizeString, dir_path, childMonitor, i, length);
 
         printf("Forking...\n");

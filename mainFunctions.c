@@ -6,7 +6,7 @@
 #include "functions.h"
 
 // Check if citizenID is vaccinated
-void travelRequest (Stats* stats, int* readyMonitors, BloomFilter* head, ChildMonitor* childMonitor, int numMonitors, int* incfd, int* outfd, int bufSize, int* accepted, int* rejected, char* citizenID, char* countryFrom, char* countryTo, char* virus, Date date) {
+void travelRequest (Stats* stats, int* readyMonitors, BloomFilter* head, ChildMonitor* childMonitor, int numMonitors, int* sockfd, int bufSize, int* accepted, int* rejected, char* citizenID, char* countryFrom, char* countryTo, char* virus, Date date) {
     BloomFilter* current = head;
     unsigned char* id = (unsigned char*)citizenID;
     unsigned long hash;
@@ -16,8 +16,7 @@ void travelRequest (Stats* stats, int* readyMonitors, BloomFilter* head, ChildMo
     // Add data to structure
     addToStats(stats, virus, countryTo, date);
 
-    while (current) {
-        // printf("Checking BLoom Filter %s\n", current->virus);
+    while (current) {       
         if (!strcmp(current->virus, virus)) {
             // Hash the id to get the bits we need to check
             for (unsigned int i=0; i<(current->k-1); i++) {
@@ -39,10 +38,18 @@ void travelRequest (Stats* stats, int* readyMonitors, BloomFilter* head, ChildMo
                     // Send increment counter message
                     for (int x=0; x<numMonitors; x++) {
                         for (int y=0; y<childMonitor[x].countryCount; y++) {
-                            if ( !strcmp(childMonitor[x].country[y], countryTo) ) {
-                                sendMessage('+', "NO", outfd[x], bufSize);
+
+                            // "ChildMonitor.country": "input_dir" + "/" + "country"
+                            char* token1 = strdup(childMonitor[x].country[y]);
+                            char* token2;
+                            token1 = strtok_r(token1, "/", &token2);
+                            if ( !strcmp(token2, countryTo) ) {
+                                printf("Sending NO to %s\n", countryTo);
+                                sendMessage('+', "NO", sockfd[x], bufSize);
+                                free(token1);
                                 return;
                             }
+                            free(token1);                            
                         }
                     }
                 }
@@ -52,7 +59,12 @@ void travelRequest (Stats* stats, int* readyMonitors, BloomFilter* head, ChildMo
             // It's a "MAYBE" => Ask the Monitor in charge of countryFrom
             for (int i=0; i<numMonitors; i++) {
                 for (int j=0; j<childMonitor[i].countryCount; j++) {
-                    if ( !strcmp(childMonitor[i].country[j], countryFrom) ) {
+
+                    // "ChildMonitor.country": "input_dir" + "/" + "country"
+                    char* token1 = strdup(childMonitor[i].country[j]);
+                    char* token2;
+                    token1 = strtok_r(token1, "/", &token2);
+                    if ( !strcmp(token2, countryFrom) ) {
                         (*readyMonitors)--;
                         char dateString[10];
                         sprintf(dateString, "%d-%d-%d", date.day, date.month, date.year);
@@ -66,10 +78,12 @@ void travelRequest (Stats* stats, int* readyMonitors, BloomFilter* head, ChildMo
                         strcat(fullString, dateString);
 
                         // Send citizenID, date to Monitor
-                        sendMessage('t', fullString, outfd[i], bufSize);
+                        sendMessage('t', fullString, sockfd[i], bufSize);
                         free(fullString);
+                        free(token1);
                         break;
                     }
+                    free(token1);
                 }
             }
             return;
@@ -137,10 +151,38 @@ char* processTravelRequest (SkipList* head, char* citizenID, char* virus, Date d
 }
 
 // Search citizenID in all childs 
-void searchVaccinationStatus (SkipList* head, char* citizenID) {
-    SkipList* current = head;
+void searchVaccinationStatus (SkipList* vaccHead, SkipList* nonVaccHead, char* citizenID) {
+    // 1st search vacc Skip Lists
+    SkipList* current = vaccHead;
     SkipNode* node = NULL;
     int done = 0;
+    // Iterate through Skip Lists
+    while (current) {
+        node = searchSkipList(current, citizenID);
+        if(node){
+            // Print 1st & 2nd lines only once
+            if (!done) {
+                // 1st line
+                printf("%s %s %s %s\n", node->citizenID, node->record->firstName, node->record->lastName, node->record->country->name);
+                // 2nd line
+                printf("AGE %d\n", node->record->age);
+                done = 1;
+            }
+            // Next lines
+            printf("%s ", current->virus);
+            if (node->vaccDate.year != 0) {
+                printf("VACCINATED ON %d-%d-%d\n", node->vaccDate.day, node->vaccDate.month, node->vaccDate.year);
+            }
+            else {
+                printf("NOT YET VACCINATED\n");
+            }
+        }
+        current = current->next;
+    }
+
+    // 2nd search NON vacc Skip Lists
+    current = nonVaccHead;
+    node = NULL;
     // Iterate through Skip Lists
     while (current) {
         node = searchSkipList(current, citizenID);

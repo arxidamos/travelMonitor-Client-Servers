@@ -89,7 +89,7 @@ void insertExecvArgs(char* argsArray[], int port, char* numThreadsString, char* 
 
 
 // Analyse incoming message in Parent
-void analyseChildMessage(int* incfd, Message* message, ChildMonitor* childMonitor, int numMonitors, int *readyMonitors, int* outfd, int bufSize, BloomFilter** bloomsHead, int bloomSize, int* accepted, int* rejected, Stats* stats) {
+void analyseChildMessage(int* sockfd, Message* message, ChildMonitor* childMonitor, int numMonitors, int *readyMonitors, int bufSize, BloomFilter** bloomsHead, int bloomSize, int* accepted, int* rejected, Stats* stats) {
     // Message 'F': Monitor reports processing finished
     if (message->code[0] =='F') {
         (*readyMonitors)++;
@@ -143,7 +143,7 @@ void analyseChildMessage(int* incfd, Message* message, ChildMonitor* childMonito
             for (int j=0; j<childMonitor[i].countryCount; j++) {
                 if ( !strcmp(childMonitor[i].country[j], countryTo) ) {
                     // Send increment counter message
-                    sendMessage('+', answer, outfd[i], bufSize);
+                    sendMessage('+', answer, sockfd[i], bufSize);
                     break;
                 }
             }
@@ -161,11 +161,11 @@ void analyseChildMessage(int* incfd, Message* message, ChildMonitor* childMonito
             }
         }
         // Re-open connection non-blockingly
-        close(incfd[index]);
+        close(sockfd[index]);
         char pipeParentReads[25];
         sprintf(pipeParentReads, "./named_pipes/readPipe%d", index);
         // Open reading & writing fds for child process, non-blockingly
-        if ((incfd[index] = open(pipeParentReads, O_RDONLY | O_NONBLOCK)) == -1) {
+        if ((sockfd[index] = open(pipeParentReads, O_RDONLY | O_NONBLOCK)) == -1) {
             perror("Error opening named pipe for reading");
             exit(1);
         }
@@ -265,222 +265,222 @@ void resendCountryDirs (char* dir_path, int numMonitors, int outfd, ChildMonitor
 }
 
 // Receive commands from user
-// int getUserCommand(Stats* stats, int* readyMonitors, int numMonitors, ChildMonitor* childMonitor, BloomFilter* bloomsHead, char* dir_path, DIR* input_dir, int* incfd, int* outfd, int bufSize, int bloomSize, int* accepted, int* rejected) {
-//     char* command = NULL;
-//     int size = 512;
-//     char input[size];
+int getUserCommand(Stats* stats, int* readyMonitors, int numMonitors, ChildMonitor* childMonitor, BloomFilter* bloomsHead, char* dir_path, DIR* input_dir, int* sockfd, int bufSize, int bloomSize, int* accepted, int* rejected) {
+    char* command = NULL;
+    int size = 512;
+    char input[size];
 
-//     // Get user commands
-//     if ( (fgets(input, size, stdin) == NULL) ) {
-//         // Check if some signal's flag is on
-//         if ( (checkSignalFlagsParent(stats, input_dir, dir_path, bufSize, bloomSize, readyMonitors, numMonitors, incfd, outfd, childMonitor, accepted, rejected, bloomsHead) == 1) ) {
-//             // SIGINT or SIGQUIT caught
-//             return 1;
-//         }
-//         return -1;
-//     }
-//     input[strlen(input)-1] = '\0'; // Cut terminating '\n' from string
+    // Get user commands
+    if ( (fgets(input, size, stdin) == NULL) ) {
+        // Check if some signal's flag is on
+        // if ( (checkSignalFlagsParent(stats, input_dir, dir_path, bufSize, bloomSize, readyMonitors, numMonitors, incfd, outfd, childMonitor, accepted, rejected, bloomsHead) == 1) ) {
+        //     // SIGINT or SIGQUIT caught
+        //     return 1;
+        // }
+        return -1;
+    }
+    input[strlen(input)-1] = '\0'; // Cut terminating '\n' from string
     
-//     char* citizenID;
-//     char* virus;
-//     Date date, date1, date2;
+    char* citizenID;
+    char* virus;
+    Date date, date1, date2;
 
-//     // Get the command
-//     command = strtok(input, " ");
-//     if (!strcmp(command, "/exit")) {
-//         // Send SIGKILL signal to every child
-//         for (int i = 0; i < numMonitors; ++i) {
-//             printf("SIGKILL sent to child\n");
-//             kill(childMonitor[i].pid, SIGKILL);
-//         }
+    // Get the command
+    command = strtok(input, " ");
+    if (!strcmp(command, "/exit")) {
+        // Send SIGKILL signal to every child
+        for (int i = 0; i < numMonitors; ++i) {
+            printf("SIGKILL sent to child\n");
+            kill(childMonitor[i].pid, SIGKILL);
+        }
 
-//         // Wait till every child finishes
-//         for (int i = 0; i < numMonitors; ++i) {
-//             waitpid(-1, NULL, 0);
-//             printf("Child listened SIGKILL, terminated\n");
+        // Wait till every child finishes
+        for (int i = 0; i < numMonitors; ++i) {
+            waitpid(-1, NULL, 0);
+            printf("Child listened SIGKILL, terminated\n");
 
-//         }
-//         // Create log file
-//         createLogFileParent (numMonitors, childMonitor, accepted, rejected);
+        }
+        // Create log file
+        // createLogFileParent (numMonitors, childMonitor, accepted, rejected);
         
-//         // Deallocate memory
-//         exitApp(stats, input_dir, dir_path, bufSize, bloomSize, readyMonitors, numMonitors, incfd, outfd, childMonitor, accepted, rejected, bloomsHead);
-//         return 1;
-//     }
-//     else if (!strcmp(command, "/vaccineStatusBloom")) {
-//         // Get citizenID
-//         command = strtok(NULL, " ");
-//         if (command) {
-//             citizenID = malloc(strlen(command)+1);
-//             strcpy(citizenID, command);
+        // Deallocate memory
+        exitApp(stats, input_dir, dir_path, bufSize, bloomSize, readyMonitors, numMonitors, sockfd, childMonitor, accepted, rejected, bloomsHead);
+        return 1;
+    }
+    else if (!strcmp(command, "/vaccineStatusBloom")) {
+        // Get citizenID
+        command = strtok(NULL, " ");
+        if (command) {
+            citizenID = malloc(strlen(command)+1);
+            strcpy(citizenID, command);
 
-//             // Get virusName
-//             command = strtok(NULL, " ");
-//             if(command) {
-//                 virus = malloc(strlen(command)+1);
-//                 strcpy(virus, command);
-//                 vaccineStatusBloom(bloomsHead, citizenID, virus);
-//                 free(virus);
-//             }
-//             else {
-//                 printf("Please enter a virus name\n");
-//             }
-//             free(citizenID);
-//         }
-//         else {
-//             printf("Please enter a citizenID and a virus name\n");
-//         }
-//     }
-//     else if (!strcmp(command, "/travelRequest")) {
-//         // Get citizenID
-//         command = strtok(NULL, " ");
-//         if (command) {
-//             citizenID = malloc(strlen(command)+1);
-//             strcpy(citizenID, command);
+            // Get virusName
+            command = strtok(NULL, " ");
+            if(command) {
+                virus = malloc(strlen(command)+1);
+                strcpy(virus, command);
+                vaccineStatusBloom(bloomsHead, citizenID, virus);
+                free(virus);
+            }
+            else {
+                printf("Please enter a virus name\n");
+            }
+            free(citizenID);
+        }
+        else {
+            printf("Please enter a citizenID and a virus name\n");
+        }
+    }
+    else if (!strcmp(command, "/travelRequest")) {
+        // Get citizenID
+        command = strtok(NULL, " ");
+        if (command) {
+            citizenID = malloc(strlen(command)+1);
+            strcpy(citizenID, command);
 
-//             // Get date
-//             command = strtok(NULL, " ");
-//             if (command) {
-//                 sscanf(command, "%d-%d-%d", &date.day, &date.month, &date.year);
+            // Get date
+            command = strtok(NULL, " ");
+            if (command) {
+                sscanf(command, "%d-%d-%d", &date.day, &date.month, &date.year);
 
-//                 // Get countryFrom
-//                 command = strtok(NULL, " ");
-//                 if (command) {
-//                     char* countryFrom = malloc(strlen(command)+1);
-//                     strcpy(countryFrom, command);
+                // Get countryFrom
+                command = strtok(NULL, " ");
+                if (command) {
+                    char* countryFrom = malloc(strlen(command)+1);
+                    strcpy(countryFrom, command);
 
-//                     // Get countryTo
-//                     command = strtok(NULL, " ");
-//                     if (command) {
-//                         char* countryTo = malloc(strlen(command)+1);
-//                         strcpy(countryTo, command);
+                    // Get countryTo
+                    command = strtok(NULL, " ");
+                    if (command) {
+                        char* countryTo = malloc(strlen(command)+1);
+                        strcpy(countryTo, command);
 
-//                         // Get virusName
-//                         command = strtok(NULL, " ");
-//                         if (command) {
-//                             virus = malloc(strlen(command)+1);
-//                             strcpy(virus, command);
+                        // Get virusName
+                        command = strtok(NULL, " ");
+                        if (command) {
+                            virus = malloc(strlen(command)+1);
+                            strcpy(virus, command);
                             
-//                             travelRequest(stats, readyMonitors, bloomsHead, childMonitor, numMonitors, incfd, outfd, bufSize, accepted, rejected, citizenID, countryFrom, countryTo, virus, date);
+                            travelRequest(stats, readyMonitors, bloomsHead, childMonitor, numMonitors, sockfd, bufSize, accepted, rejected, citizenID, countryFrom, countryTo, virus, date);
 
-//                             free(virus);
-//                         }
-//                         else {
-//                             printf("Please also enter the following parameter: virusName.\n");
-//                         }
-//                         free(countryTo);
-//                     }
-//                     else {
-//                         printf("Please also enter the following parameters: countryTo virusName.\n");
-//                     }
-//                     free(countryFrom);
-//                 }
-//                 else {
-//                     printf("Please also enter the following parameters: countryFrom countryTo virusName.\n");
-//                 }
-//             }
-//             else {
-//                 printf("Please also enter the following parameters: date countryFrom countryTo virusName.\n");
-//             }
-//             free(citizenID);
-//         }
-//         else {
-//             printf("Please enter the following parameters: citizenID date countryFrom countryTo virusName.\n");
-//         }
-//     }
-//     else if (!strcmp(command, "/travelStats")) {
-//         // Get virusName
-//         command = strtok(NULL, " ");
-//         if (command) {
-//             char* virus = malloc(strlen(command)+1);
-//             strcpy(virus, command);
+                            free(virus);
+                        }
+                        else {
+                            printf("Please also enter the following parameter: virusName.\n");
+                        }
+                        free(countryTo);
+                    }
+                    else {
+                        printf("Please also enter the following parameters: countryTo virusName.\n");
+                    }
+                    free(countryFrom);
+                }
+                else {
+                    printf("Please also enter the following parameters: countryFrom countryTo virusName.\n");
+                }
+            }
+            else {
+                printf("Please also enter the following parameters: date countryFrom countryTo virusName.\n");
+            }
+            free(citizenID);
+        }
+        else {
+            printf("Please enter the following parameters: citizenID date countryFrom countryTo virusName.\n");
+        }
+    }
+    else if (!strcmp(command, "/travelStats")) {
+        // Get virusName
+        command = strtok(NULL, " ");
+        if (command) {
+            char* virus = malloc(strlen(command)+1);
+            strcpy(virus, command);
 
-//             // Get date1
-//             command = strtok(NULL, " ");
-//             if (command) {
-//                 sscanf(command, "%d-%d-%d", &date1.day, &date1.month, &date1.year);
+            // Get date1
+            command = strtok(NULL, " ");
+            if (command) {
+                sscanf(command, "%d-%d-%d", &date1.day, &date1.month, &date1.year);
 
-//                 // Get date2
-//                 command = strtok(NULL, " ");
-//                 if (command) {
-//                     sscanf(command, "%d-%d-%d", &date2.day, &date2.month, &date2.year);
+                // Get date2
+                command = strtok(NULL, " ");
+                if (command) {
+                    sscanf(command, "%d-%d-%d", &date2.day, &date2.month, &date2.year);
 
-//                     // Get [country]
-//                     command = strtok(NULL, " ");
-//                     if (command) {
-//                         char* country = malloc(strlen(command)+1);
-//                         strcpy(country, command);
+                    // Get [country]
+                    command = strtok(NULL, " ");
+                    if (command) {
+                        char* country = malloc(strlen(command)+1);
+                        strcpy(country, command);
 
-//                         travelStats((*stats), virus, date1, date2, country);
+                        travelStats((*stats), virus, date1, date2, country);
 
-//                         free(country);
-//                     }
-//                     // No [country]
-//                     else {
-//                         travelStats((*stats), virus, date1, date2, NULL);
-//                     }
-//                 }
-//                 else {
-//                     printf("Please also enter the following parameters: date2 [country].\n");
-//                 }
-//             }
-//             else {
-//                 printf("Please also enter the following parameters: date1 date2 [country].\n");
-//             }
-//             free(virus);
-//         }
-//         else {
-//             printf("Please enter the following parameters: virusName date1 date2 [country].\n");
-//         }
-//     }
-//     else if (!strcmp(command, "/addVaccinationRecords")) {
-//         // Get citizenID
-//         command = strtok(NULL, " ");
-//         if (command) {
-//             char* country = malloc(strlen(command)+1);
-//             strcpy(country, command);
+                        free(country);
+                    }
+                    // No [country]
+                    else {
+                        travelStats((*stats), virus, date1, date2, NULL);
+                    }
+                }
+                else {
+                    printf("Please also enter the following parameters: date2 [country].\n");
+                }
+            }
+            else {
+                printf("Please also enter the following parameters: date1 date2 [country].\n");
+            }
+            free(virus);
+        }
+        else {
+            printf("Please enter the following parameters: virusName date1 date2 [country].\n");
+        }
+    }
+    else if (!strcmp(command, "/addVaccinationRecords")) {
+        // Get citizenID
+        command = strtok(NULL, " ");
+        if (command) {
+            char* country = malloc(strlen(command)+1);
+            strcpy(country, command);
 
-//             // Find the child that controls this country
-//             for (int i=0; i<numMonitors; i++) {
-//                 for (int j=0; j<childMonitor[i].countryCount; j++) {
-//                     if (!strcmp(childMonitor[i].country[j], country)) {
-//                         // Send SIGUSR1 to child
-//                         kill(childMonitor[i].pid, SIGUSR1);
-//                         break;
-//                     }
-//                 }
-//             }
-//             free(country);
-//         }
-//         else {
-//             printf("Please enter country parameter.\n");
-//         }
+            // Find the child that controls this country
+            for (int i=0; i<numMonitors; i++) {
+                for (int j=0; j<childMonitor[i].countryCount; j++) {
+                    if (!strcmp(childMonitor[i].country[j], country)) {
+                        // Send SIGUSR1 to child
+                        kill(childMonitor[i].pid, SIGUSR1);
+                        break;
+                    }
+                }
+            }
+            free(country);
+        }
+        else {
+            printf("Please enter country parameter.\n");
+        }
 
-//     }
-//     else if (!strcmp(command, "/searchVaccinationStatus")) {
-//         // Get citizenID
-//         command = strtok(NULL, " ");
-//         if (command) {
-//             citizenID = malloc(strlen(command)+1);
-//             strcpy(citizenID, command);
+    }
+    else if (!strcmp(command, "/searchVaccinationStatus")) {
+        // Get citizenID
+        command = strtok(NULL, " ");
+        if (command) {
+            citizenID = malloc(strlen(command)+1);
+            strcpy(citizenID, command);
 
-//             // Send search message to all childs
-//             for (int i=0; i<numMonitors; i++) {
-//                 (*readyMonitors)--;
-//                 sendMessage('s', citizenID, outfd[i], bufSize);
-//             }
-//             free(citizenID);
-//         }
-//         else {
-//             printf("Please citizenID parameter.\n");
-//         }
-//     }
-//     else {
-//         printf("Command '%s' is unknown\n", command);
-//         printf("Please type a known command:\n");
-//     }
-//     return 0;
-// }
+            // Send search message to all childs
+            for (int i=0; i<numMonitors; i++) {
+                (*readyMonitors)--;
+                sendMessage('s', citizenID, sockfd[i], bufSize);
+            }
+            free(citizenID);
+        }
+        else {
+            printf("Please citizenID parameter.\n");
+        }
+    }
+    else {
+        printf("Command '%s' is unknown\n", command);
+        printf("Please type a known command:\n");
+    }
+    return 0;
+}
 
 // Print log file
 void createLogFileParent (int numMonitors, ChildMonitor* childMonitor, int* accepted, int* rejected) {
@@ -567,7 +567,7 @@ void updateBitArray (BloomFilter* bloomFilter, char* bitArray) {
 }
 
 // Deallocate memory and exit
-void exitApp(Stats* stats, DIR* input_dir, char* dir_path, int bufSize, int bloomSize, int* readyMonitors, int numMonitors, int* readfd, int* writefd, ChildMonitor* childMonitor, int* accepted, int* rejected, BloomFilter* bloomsHead) {
+void exitApp(Stats* stats, DIR* input_dir, char* dir_path, int bufSize, int bloomSize, int* readyMonitors, int numMonitors, int* sockfd,  ChildMonitor* childMonitor, int* accepted, int* rejected, BloomFilter* bloomsHead) {
     struct dirent** directory;
     int dirCount;
     // Scan directory in alphabetical order

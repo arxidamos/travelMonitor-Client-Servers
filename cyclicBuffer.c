@@ -42,7 +42,7 @@ void insertToCyclicBuffer (CyclicBuffer* cBuf, char* path) {
 
     cBuf->paths[cBuf->end] = strdup(path);
 
-    printf("Thread %lu: Inserted [%s] at cBuf->paths[%d]\n", (long)pthread_self(), cBuf->paths[cBuf->end], cBuf->end);
+    // printf("Thread %lu: Inserted [%s] at cBuf->paths[%d]\n", (long)pthread_self(), cBuf->paths[cBuf->end], cBuf->end);
                 
     
     pthread_mutex_unlock(&mtx);

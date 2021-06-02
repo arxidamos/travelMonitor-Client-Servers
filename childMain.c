@@ -59,62 +59,48 @@ int main(int argc, char* argv[]) {
         // printf("path[%d]=%s\n", index, path[index]);
         index++;
     }
-    // Structure to store Monitor's directories & files info
+    // Get this Monitor's dirs and respective files
     MonitorDir* monitorDir = NULL;
     readDirs(&monitorDir, path, pathsNumber);
     // printMonitorDirList(monitorDir);
 
     ////////////////////////////////////////////////////////////////////////////////////
-
                
-        // Structures to store records data
-        bloomsHead = NULL;
-        stateHead = NULL;
-        recordsHead = NULL;
-        skipVaccHead = NULL;
-        skipNonVaccHead = NULL;
-        // Seed the time generator
-        srand(time(NULL));
-        int accepted = 0;
-        int rejected = 0;
+    // Common structures to store records data
+    bloomsHead = NULL;
+    stateHead = NULL;
+    recordsHead = NULL;
+    skipVaccHead = NULL;
+    skipNonVaccHead = NULL;
+    // Seed the time generator
+    srand(time(NULL));
+    int accepted = 0;
+    int rejected = 0;
+
+    // Initialise cyclic buffer's fields, mutex, condition vars
+    initCyclicBuffer(&cBuf, cyclicBufferSize);
+    pthread_mutex_init(&mtx, NULL);
+    pthread_cond_init(&condNonEmpty, NULL);
+    pthread_cond_init(&condNonFull, NULL);
+
+    // Create numThreads threads
+    pthread_t threads[numThreads];
+    for (int i=0; i<numThreads; i++) {
+        pthread_create(&threads[i], NULL, threadConsumer, NULL);
+    }
+
+    // Call threads and populate common structures with files' data
+    threadFileReader(monitorDir, numThreads);
 
 
-        initCyclicBuffer(&cBuf, cyclicBufferSize);
-        pthread_mutex_init(&mtx, NULL);
-        pthread_cond_init(&condNonEmpty, NULL);
-        pthread_cond_init(&condNonFull, NULL);
+    // Wait for threads to terminate
+    for (int i=0; i<numThreads; i++) {
+        pthread_join(threads[i], 0);
+        printf("Thread [%d] joined\n", i);
+    }
 
-        pthread_t threads[numThreads];
-        for (int i=0; i<numThreads; i++) {
-            pthread_create(&threads[i], NULL, threadConsumer, NULL);
-        }
-
-        // INSERT SHIT 
-        MonitorDir* current = monitorDir;
-        while (current) {
-            
-            for (int i=0; i<current->fileCount; i++) {
-                insertToCyclicBuffer(&cBuf, current->files[i]);
-                pthread_cond_broadcast(&condNonEmpty);
-                printf("Broadcasted\n");
-            }
-            // free(cBuf.paths);
-            current = current->next;
-        } 
-
-        for (int i=0; i<numThreads; i++) {
-            // Unblock all threads
-            insertToCyclicBuffer(&cBuf, "finish");
-            pthread_cond_signal(&condNonEmpty);
-        }
-
-        for (int i=0; i<numThreads; i++) {
-            pthread_join(threads[i], 0);
-            printf("Thread [%d] joined\n", i);
-        }
-
-        printRecordsList(recordsHead);
-        printBloomsList(bloomsHead);
+    // printRecordsList(recordsHead);
+    // printBloomsList(bloomsHead);
     ////////////////////////////////////////////////////////////////////////////////////
     struct sockaddr_in servAddr;
     struct sockaddr_in clientAddr;
@@ -149,7 +135,6 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
     printf("Listening for connections to port %d\n", port);
-    char buffer[10];
     // Accept connection
     if ( (newSockfd = accept(sockfd, (struct sockaddr*)&clientAddr, &clientLength)) < 0 ) {
         perror("Error with accept");
@@ -159,8 +144,9 @@ int main(int argc, char* argv[]) {
         perror("Error with gethostbyname");
         exit(1);
     }
-    // Report ready
-    write(newSockfd, "1", 1);
+    // Report ready to parent-client
+    updateParentBlooms(bloomsHead, newSockfd, socketBufferSize);
+    sendMessage('F', "", newSockfd, socketBufferSize);
 
     fd_set incfds;
 
@@ -177,28 +163,34 @@ int main(int argc, char* argv[]) {
         }
         // Check if available data in this fd
         if (FD_ISSET(newSockfd, &incfds)) {
-            if ( (read(newSockfd, buffer, 1)) == -1 ) {
-                // printf("Reading -1\n");
-                // sleep(1);
+
+            // Get incoming messages
+            Message* incMessage = malloc(sizeof(Message));
+            if (getMessage(incMessage, newSockfd, socketBufferSize) == -1) {
                 continue;
             }
-            if (buffer[0] == 'p') {
-                printf("Message received from Server %d\n", (int)getpid());
-                write(newSockfd, "1", 1);
-                // close(sockfd);
-                // close(newSockfd);
-            }
-            if (buffer[0] == 'e') {
-                close(sockfd);
-                close(newSockfd);
-                // for (int i=0; i<numThreads; i++) {
-                //     pthread_join(threads[i], 0);
-                // }
 
-                freeCyclicBuffer(&cBuf);
-                freeMonitorDirList(monitorDir);
-                kill(getpid(), SIGKILL);
-            }        
+            // Decode incoming messages
+            analyseMessage(&monitorDir, incMessage, newSockfd, &socketBufferSize, &bloomSize, &bloomsHead, &stateHead, &recordsHead, &skipVaccHead, &skipNonVaccHead, &accepted, &rejected);
+
+            // if (buffer[0] == 'p') {
+                //     printf("Message received from Server %d\n", (int)getpid());
+                //     // write(newSockfd, "8", 1);
+                    
+                //     // close(sockfd);
+                //     // close(newSockfd);
+                // }
+                // if (buffer[0] == 'e') {
+                //     close(sockfd);
+                //     close(newSockfd);
+                //     // for (int i=0; i<numThreads; i++) {
+                //     //     pthread_join(threads[i], 0);
+                //     // }
+
+                //     freeCyclicBuffer(&cBuf);
+                //     freeMonitorDirList(monitorDir);
+                //     kill(getpid(), SIGKILL);
+            // }        
             FD_CLR(newSockfd, &incfds);
         }
     }
@@ -206,22 +198,10 @@ int main(int argc, char* argv[]) {
 
 void* threadConsumer (void* ptr) {
     printf("Thread %lu: begin=====================\n",(long)pthread_self());
-    // while (cBuf.pathCount >= 0) {
-    //     char* path;
-    //     if ( (!strcmp(extractFromCyclicBuffer(&cBuf, &path), "finish"))  ) {
-    //         return NULL;
-    //     }
-    //     printf("Thread %lu Extracted %s\n",(long)pthread_self(), path);
-    //     // processFile(path);
-    //     pthread_cond_signal(&condNonFull);
-    // }
-    // printf("=====================\n");
-    // return NULL;
     char* path;
     while ( (strcmp(extractFromCyclicBuffer(&cBuf, &path), "finish")) ) {
-        printf("Thread %lu: Extracted [%s]\n",(long)pthread_self(), path);
+        // printf("Thread %lu: Extracted [%s]\n",(long)pthread_self(), path);
         processFile(path);
-        printf("SIGNAL TO childMain\n");
         pthread_cond_signal(&condNonFull);
     }
     // Wake up childMain one last time for each thread
@@ -230,6 +210,30 @@ void* threadConsumer (void* ptr) {
     return NULL;
 
 }
+
+
+void threadFileReader(MonitorDir* monitorDir, int numThreads) {
+    MonitorDir* current = monitorDir;
+    while (current) {
+        
+        for (int i=0; i<current->fileCount; i++) {
+            insertToCyclicBuffer(&cBuf, current->files[i]);
+            pthread_cond_broadcast(&condNonEmpty);
+
+            // printf("Broadcasted\n");
+
+        }
+        // free(cBuf.paths);
+        current = current->next;
+    } 
+
+    for (int i=0; i<numThreads; i++) {
+        // Unblock all threads
+        insertToCyclicBuffer(&cBuf, "finish");
+        pthread_cond_signal(&condNonEmpty);
+    }
+}
+
 
 
 //     // Structure to store Monitor's directory info

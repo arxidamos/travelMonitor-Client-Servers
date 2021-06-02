@@ -45,10 +45,10 @@ void freeSkipNodes (SkipList* skipList);
 
 // mainFunctions.c
 // Command functions
-void travelRequest (Stats* stats, int* readyMonitors, BloomFilter* head, ChildMonitor* childMonitor, int numMonitors, int* incfd, int* outfd, int bufSize, int* accepted, int* rejected, char* citizenID, char* countryFrom, char* countryTo, char* virus, Date date);
+void travelRequest (Stats* stats, int* readyMonitors, BloomFilter* head, ChildMonitor* childMonitor, int numMonitors, int* sockfd, int bufSize, int* accepted, int* rejected, char* citizenID, char* countryFrom, char* countryTo, char* virus, Date date);
 void travelStats (Stats stats, char* virus, Date date1, Date date2, char* country);
 char* processTravelRequest (SkipList* head, char* citizenID, char* virus, Date date);
-void searchVaccinationStatus (SkipList* head, char* citizenID);
+void searchVaccinationStatus (SkipList* vaccHead, SkipList* nonVaccHead, char* citizenID);
 void vaccineStatusBloom (BloomFilter* head, char* citizenID, char* virus);
 void vaccineStatus (SkipList* head, char* citizenID, char* virus);
 void vaccineStatusAll (SkipList* head, char* citizenID);
@@ -67,20 +67,20 @@ char* readMessage(char* msg, int length, int fd, int bufSize);
 void sendMessage (char code, char* body, int fd, int bufSize);
 
 // childAux.c
-void analyseMessage (MonitorDir** monitorDir, Message* message, int outfd, int* bufSize, int* bloomSize, char* dir_path, BloomFilter** bloomsHead, State** stateHead, Record** recordsHead, SkipList** skipVaccHead, SkipList** skipNonVaccHead, int* accepted, int* rejected);
+void analyseMessage (MonitorDir** monitorDir, Message* message, int outfd, int* bufSize, int* bloomSize, BloomFilter** bloomsHead, State** stateHead, Record** recordsHead, SkipList** skipVaccHead, SkipList** skipNonVaccHead, int* accepted, int* rejected);
 void processUsr1(MonitorDir** monitorDir, int outfd, int bufSize, int bloomSize, char* dir_path, BloomFilter** bloomsHead, State** stateHead, Record** recordsHead, SkipList** skipVaccHead, SkipList** skipNonVaccHead);
 void updateParentBlooms(BloomFilter* bloomsHead, int outfd, int bufSize);
 int compare (const void * a, const void * b);
 
 // parentAux.c
-void analyseChildMessage(int* incfd, Message* message, ChildMonitor* childMonitor, int numMonitors, int *readyMonitors, int* outfd, int bufSize, BloomFilter** bloomsHead, int bloomSize, int* accepted, int* rejected, Stats* stats);
+void analyseChildMessage(int* sockfd, Message* message, ChildMonitor* childMonitor, int numMonitors, int *readyMonitors, int bufSize, BloomFilter** bloomsHead, int bloomSize, int* accepted, int* rejected, Stats* stats);
 void mapCountryDirs (char* dir_path, int numMonitors, ChildMonitor childMonitor[]);
 void replaceChild (pid_t pid, char* dir_path, int bufSize, int bloomSize, int numMonitors, int* readfd, int* writefd, ChildMonitor* childMonitor);
 void resendCountryDirs (char* dir_path, int numMonitors, int outfd, ChildMonitor childMonitor, int bufSize);
-int getUserCommand(Stats* stats, int* readyMonitors, int numMonitors, ChildMonitor* childMonitor, BloomFilter* bloomsHead, char* dir_path, DIR* input_dir, int* incfd, int* outfd, int bufSize, int bloomSize, int* accepted, int* rejected);
+int getUserCommand(Stats* stats, int* readyMonitors, int numMonitors, ChildMonitor* childMonitor, BloomFilter* bloomsHead, char* dir_path, DIR* input_dir, int* sockfd, int bufSize, int bloomSize, int* accepted, int* rejected);
 void createLogFileParent (int numMonitors, ChildMonitor* childMonitor, int* accepted, int* rejected);
 void updateBitArray (BloomFilter* bloomFilter, char* bitArray);
-void exitApp(Stats* stats, DIR* input_dir, char* dir_path, int bufSize, int bloomSize, int* readyMonitors, int numMonitors, int* readfd, int* writefd, ChildMonitor* childMonitor, int* accepted, int* rejected, BloomFilter* bloomsHead);
+void exitApp(Stats* stats, DIR* input_dir, char* dir_path, int bufSize, int bloomSize, int* readyMonitors, int numMonitors, int* sockfd, ChildMonitor* childMonitor, int* accepted, int* rejected, BloomFilter* bloomsHead);
 
 // childSignals.c
 void handleSignals(void);
@@ -125,6 +125,8 @@ void insertToCyclicBuffer (CyclicBuffer* cBuf, char* path);
 char* extractFromCyclicBuffer (CyclicBuffer* cBuf, char** path);
 void freeCyclicBuffer (CyclicBuffer* cBuf);
 void processFile (char* filePath);
+void threadFileReader(MonitorDir* monitorDir, int numThreads);
+
 
 extern pthread_mutex_t mtx;
 extern pthread_cond_t condNonEmpty;

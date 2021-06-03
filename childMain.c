@@ -1,24 +1,21 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <dirent.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
-#include <sys/stat.h>
 #include <netdb.h>
 #include <fcntl.h>
-#include <errno.h>
 #include <pthread.h>
 #include "structs.h"
 #include "functions.h"
 
 CyclicBuffer cBuf;
-// pthread_mutex_t mtx;
-// pthread_cond_t condNonEmpty;
-// pthread_cond_t condNonFull;
+pthread_mutex_t mtx;
+pthread_cond_t condNonEmpty;
+pthread_cond_t condNonFull;
 
 // Structures to store records data
 BloomFilter* bloomsHead;
@@ -89,15 +86,9 @@ int main(int argc, char* argv[]) {
         pthread_create(&threads[i], NULL, threadConsumer, NULL);
     }
 
-    // Call threads and populate common structures with files' data
-    threadFileReader(monitorDir, numThreads);
+    // Put paths in cyclic buffer, call threads
+    sendPathsToThreads(monitorDir, numThreads);
 
-
-    // Wait for threads to terminate
-    for (int i=0; i<numThreads; i++) {
-        pthread_join(threads[i], 0);
-        printf("Thread [%d] joined\n", i);
-    }
 
     // printRecordsList(recordsHead);
     // printBloomsList(bloomsHead);
@@ -171,8 +162,23 @@ int main(int argc, char* argv[]) {
             }
 
             // Decode incoming messages
-            analyseMessage(&monitorDir, incMessage, newSockfd, &socketBufferSize, &bloomSize, &bloomsHead, &stateHead, &recordsHead, &skipVaccHead, &skipNonVaccHead, &accepted, &rejected);
+            analyseMessage(&monitorDir, incMessage, newSockfd, &socketBufferSize, &bloomSize, &bloomsHead, &stateHead, &recordsHead, &skipVaccHead, &skipNonVaccHead, &accepted, &rejected, numThreads);
 
+            if (incMessage->code[0] == '!') {
+
+                // Once done, inform threads to finish 
+                for (int i=0; i<numThreads; i++) {
+                    // Wake all threads
+                    insertToCyclicBuffer(&cBuf, "finish");
+                    pthread_cond_signal(&condNonEmpty);
+                }
+
+                // Wait for threads to terminate
+                for (int i=0; i<numThreads; i++) {
+                    pthread_join(threads[i], 0);
+                    printf("Thread [%d] joined\n", i);
+                }
+            }
             // if (buffer[0] == 'p') {
                 //     printf("Message received from Server %d\n", (int)getpid());
                 //     // write(newSockfd, "8", 1);
@@ -195,90 +201,3 @@ int main(int argc, char* argv[]) {
         }
     }
 }
-
-void* threadConsumer (void* ptr) {
-    printf("Thread %lu: begin=====================\n",(long)pthread_self());
-    char* path;
-    while ( (strcmp(extractFromCyclicBuffer(&cBuf, &path), "finish")) ) {
-        // printf("Thread %lu: Extracted [%s]\n",(long)pthread_self(), path);
-        processFile(path);
-        pthread_cond_signal(&condNonFull);
-    }
-    // Wake up childMain one last time for each thread
-    pthread_cond_signal(&condNonFull);
-    printf("Thread %lu: exit=====================\n",(long)pthread_self());
-    return NULL;
-
-}
-
-
-void threadFileReader(MonitorDir* monitorDir, int numThreads) {
-    MonitorDir* current = monitorDir;
-    while (current) {
-        
-        for (int i=0; i<current->fileCount; i++) {
-            insertToCyclicBuffer(&cBuf, current->files[i]);
-            pthread_cond_broadcast(&condNonEmpty);
-
-            // printf("Broadcasted\n");
-
-        }
-        // free(cBuf.paths);
-        current = current->next;
-    } 
-
-    for (int i=0; i<numThreads; i++) {
-        // Unblock all threads
-        insertToCyclicBuffer(&cBuf, "finish");
-        pthread_cond_signal(&condNonEmpty);
-    }
-}
-
-
-
-//     // Structure to store Monitor's directory info
-//     MonitorDir* monitorDir = NULL;
-//     // Structures to store records data
-//     BloomFilter* bloomsHead = NULL;
-//     State* stateHead = NULL;
-//     Record* recordsHead = NULL;
-//     SkipList* skipVaccHead = NULL;
-//     SkipList* skipNonVaccHead = NULL;
-//     // Seed the time generator
-//     srand(time(NULL));
-//     int accepted = 0;
-//     int rejected = 0;
-
-//    // Initialize bufSize and bloomSize
-//     int bufSize = 10;
-//     int bloomSize = 0;
-
-//     // Get 1st message for bufSize
-//     Message* firstMessage = malloc(sizeof(Message));
-//     getMessage(firstMessage, incfd, bufSize);
-//     analyseMessage(&monitorDir, firstMessage, outfd, &bufSize, &bloomSize, dir_path, &bloomsHead, &stateHead, &recordsHead, &skipVaccHead, &skipNonVaccHead, &accepted, &rejected);
- 
-//     // Get 2nd message for bloomSize
-//     getMessage(firstMessage, incfd, bufSize);
-//     analyseMessage(&monitorDir, firstMessage, outfd, &bufSize, &bloomSize, dir_path, &bloomsHead, &stateHead, &recordsHead, &skipVaccHead, &skipNonVaccHead, &accepted, &rejected);
-
-//     free(firstMessage->code);
-//     free(firstMessage->body);
-//     free(firstMessage);
-
-//     while (1) {
-//         // Keep checking signal flags
-//         blockSignals();
-//         checkSignalFlags(&monitorDir, outfd, bufSize, bloomSize, dir_path, &bloomsHead, &stateHead, &recordsHead, &skipVaccHead, &skipNonVaccHead, &accepted, &rejected);
-//         unblockSignals();
-
-//         // Get incoming messages
-//         Message* incMessage = malloc(sizeof(Message));
-//         if (getMessage(incMessage, incfd, bufSize) == -1) {
-//             continue;
-//         }
-
-//         // Decode incoming messages
-//         analyseMessage(&monitorDir, incMessage, outfd, &bufSize, &bloomSize, dir_path, &bloomsHead, &stateHead, &recordsHead, &skipVaccHead, &skipNonVaccHead, &accepted, &rejected);
-//     }
-// }

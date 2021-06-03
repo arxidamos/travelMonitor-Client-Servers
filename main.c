@@ -1,16 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <dirent.h>
 #include <string.h>
-#include <time.h>
-#include <signal.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
-#include <sys/stat.h>
 #include <netdb.h>
-#include <fcntl.h>
 #include "functions.h"
 #include "structs.h"
 
@@ -118,14 +113,11 @@ int main(int argc, char **argv) {
         memcpy(&(servAddr.sin_addr.s_addr), rem->h_addr, rem->h_length);
         servAddr.sin_port = htons(port);
     
-        // sprintf(portString, "%d", port);
-
-        // int pathArgs = childMonitor[i].countryCount; // Number of path arguments
-        int pathArgs = childMonitor[i].countryCount;
-        int restofArgs = 12;    // Number of rest of arguments (and NULL)
+        // Form the args array that we pass to execv
+        int pathArgs = childMonitor[i].countryCount; // Number of path args
+        int restofArgs = 12;    // Number of rest of args (and NULL)
         int length = pathArgs + restofArgs;
         char* argsArray[length];
-
         insertExecvArgs(argsArray, port, numThreadsString, socketBufferSizeString, cyclicBufferSizeString, bloomSizeString, dir_path, childMonitor, i, length);
 
         printf("Forking...\n");
@@ -137,16 +129,13 @@ int main(int argc, char **argv) {
         }
         // Child executes "child" program
         if (childpids[i] == 0) {
-            printf("Calling execl in child %d at port %d\n", (int)childpids[i], port);
             execv("./monitorServer", argsArray);
             perror("Error with execv");
         }
-        // Connect to Monitor Servers
+        // Connect to Monitor Servers (once they are up)
         int status;
         do {
             status = connect(sockfd[i], (struct sockaddr*)&servAddr, sizeof(servAddr));
-            // printf("%d) Status %d\n", i, status);
-            // sleep(1);
         }
         while (status < 0);
 
@@ -162,8 +151,6 @@ int main(int argc, char **argv) {
         port++;
     }
 
-    printf("OK proxwra gamw to arxidi sou\n");
-
     // Var to monitor if child is about to send message
     int readyMonitors = 0;
     // Vars for stats
@@ -175,7 +162,7 @@ int main(int argc, char **argv) {
     BloomFilter* bloomsHead = NULL;
 
     fd_set incfds;
-    
+
     while (1) {
         // Monitor(s) about to send message
         if (readyMonitors < numMonitors) {
@@ -203,11 +190,7 @@ int main(int argc, char **argv) {
                     
                     // Decode incoming messages
                     analyseChildMessage(sockfd, incMessage, childMonitor, numMonitors, &readyMonitors, socketBufferSize, &bloomsHead, bloomSize, &accepted, &rejected, &stats);
-                    // read(sockfd[i], buffer, 1);
-                    // printf("Read %c\n", buffer[0]);
-                    // if (buffer[0] == '1') {
-                    //     readyMonitors++;
-                    // }
+
                     FD_CLR(sockfd[i], &incfds);
                     free(incMessage->code);
                     free(incMessage->body);
@@ -218,45 +201,6 @@ int main(int argc, char **argv) {
         // Monitors ready. Receive user queries
         else {
             printf("Type a command:\n");
-            // fgets(input, size, stdin);
-                // input[strlen(input)-1] = '\0'; // Cut terminating '\n' from string
-                // // Get the command
-                // command = strtok(input, " ");
-                // if (!strcmp(command, "/exit")) {
-                //     // Send SIGKILL signal to every child
-                //     free(dir_path);
-                //     closedir(input_dir);
-                //     free(buffer);
-                //     for (int i=0; i<numMonitors; i++) {
-                //         kill(childpids[i], SIGKILL);
-                //         close(sockfd[i]);
-                //     }
-
-                //     for (int i=0; i<numMonitors; i++) {
-                //         for (int j=0; j<childMonitor[i].countryCount; j++) {
-                //             free(childMonitor[i].country[j]);
-                //         }
-                //         free(childMonitor[i].country);
-                //     }                
-
-                //     exit(0);
-                //     // return 1;2
-                // }
-                // if (!strcmp(command, "/print")) {
-                    
-                //     for (int i=0; i<numMonitors; i++) {
-                //         readyMonitors--;
-                //         write(sockfd[i], "p", 1);
-                //     }
-                //     // return 1;
-                // }
-                // if (!strcmp(command, "/close")) {
-                //     for (int i=0; i<numMonitors; i++) {
-                //         write(sockfd[i], "e", 1);
-                //     }
-                //     // return 1;
-            // }
-
 
             int userCommand = getUserCommand(&stats, &readyMonitors, numMonitors, childMonitor, bloomsHead, dir_path, input_dir, sockfd, socketBufferSize, bloomSize, &accepted, &rejected);
             // Command is NULL
@@ -268,35 +212,6 @@ int main(int argc, char **argv) {
             else if (userCommand == 1) {
                 exit(0);
             }
-
-
-
         }
     }
-
-
 }
-
-
-
-
-//     while (1) {
-
-//             }
-//         }
-//         // Monitors ready. Receive user queries
-//         else {
-//             printf("Type a command:\n");
-//             int userCommand = getUserCommand(&stats, &readyMonitors, numMonitors, childMonitor, bloomsHead, dir_path, input_dir, readfd, writefd, bufferSize, bloomSize, &accepted, &rejected);
-//             // Command is NULL
-//             if (userCommand == -1) {
-//                 fflush(stdin);
-//                 continue;
-//             }
-//             // Command is /exit
-//             else if (userCommand == 1) {
-//                 exit(0);
-//             }
-//         }
-//     }
-// }

@@ -5,11 +5,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <sys/stat.h>
 #include <fcntl.h>
-#include <limits.h>
-#include <signal.h>
-#include <errno.h>
 #include "functions.h"
 #include "structs.h"
 
@@ -31,8 +27,6 @@ void mapCountryDirs (char* dir_path, int numMonitors, ChildMonitor childMonitor[
             if (childMonitor[i].countryCount == 0) {
                 childMonitor[i].countryCount++;
                 childMonitor[i].country = malloc(sizeof(char*)*(childMonitor[i].countryCount));
-                // childMonitor[i].country[0] = malloc(strlen(dirName)+1);
-                // strcpy(childMonitor[i].country[0], dirName);
                 childMonitor[i].country[0] = malloc(strlen(dir_path) + strlen(dirName)+1);
                 strcpy(childMonitor[i].country[0], dir_path);
                 strcat(childMonitor[i].country[0], dirName);
@@ -51,12 +45,6 @@ void mapCountryDirs (char* dir_path, int numMonitors, ChildMonitor childMonitor[
         free(directory[i]);
     }
     free(directory);
-
-    // // When mapping ready, send 'F' message
-    // for (int i=0; i<numMonitors; i++) {
-    //     sendMessage('F', "", outfd[i], bufSize);
-    // }
-    // printf("FINISHED MAPPING COUNTRIES\n");
 }
 
 // Create arg array for execv call
@@ -75,6 +63,8 @@ void insertExecvArgs(char* argsArray[], int port, char* numThreadsString, char* 
     argsArray[8] = strdup(cyclicBufferSizeString);
     argsArray[9] = strdup("-s");
     argsArray[10] = strdup(bloomSizeString);
+
+    // Store country paths in last indices
     for (int x=11; x<(childMonitor[index].countryCount+11); x++) {
         argsArray[x] = strdup(childMonitor[index].country[x-11]);
     }
@@ -84,9 +74,6 @@ void insertExecvArgs(char* argsArray[], int port, char* numThreadsString, char* 
         printf("%s ", argsArray[j]);
     }
 }
-
-
-
 
 // Analyse incoming message in Parent
 void analyseChildMessage(int* sockfd, Message* message, ChildMonitor* childMonitor, int numMonitors, int *readyMonitors, int bufSize, BloomFilter** bloomsHead, int bloomSize, int* accepted, int* rejected, Stats* stats) {
@@ -149,110 +136,6 @@ void analyseChildMessage(int* sockfd, Message* message, ChildMonitor* childMonit
             }
         }
     }
-    // Message '1': Monitor reports reading initial messages
-    if (message->code[0] == '1') {
-        // Get pid of child that sent message
-        int index;
-        pid_t pid = (pid_t)atoi(message->body);
-        for (int i=0; i<numMonitors; i++) {
-            if (pid == childMonitor[i].pid) {
-                index = i;
-                break;
-            }
-        }
-        // Re-open connection non-blockingly
-        close(sockfd[index]);
-        char pipeParentReads[25];
-        sprintf(pipeParentReads, "./named_pipes/readPipe%d", index);
-        // Open reading & writing fds for child process, non-blockingly
-        if ((sockfd[index] = open(pipeParentReads, O_RDONLY | O_NONBLOCK)) == -1) {
-            perror("Error opening named pipe for reading");
-            exit(1);
-        }
-    }
-}
-
-// Replace terminated child
-void replaceChild (pid_t pid, char* dir_path, int bufSize, int bloomSize, int numMonitors, int* readfd, int* writefd, ChildMonitor* childMonitor) {
-    // Find the terminated child in parent's structure
-    int i=0;
-    for (i=0; i<numMonitors; i++) {
-        if (pid == childMonitor[i].pid) {
-            break;
-        }
-    }
-
-    // Close reading & writing fds for child
-    if ( close(readfd[i]) == -1 ) {
-        perror("Error closing named pipe for reading");
-        exit(1);
-    }
-    if ( close(writefd[i]) == -1 ) {
-        perror("Error closing named pipe for writing");
-        exit(1);
-    }
-
-    // Name reading & writing named pipes for read and write
-    char pipeParentReads[25];
-    char pipeParentWrites[25];
-    sprintf(pipeParentReads, "./named_pipes/readPipe%d", i);
-    sprintf(pipeParentWrites, "./named_pipes/writePipe%d", i);
-
-    // Remove reading & writing named pipes for child
-    if ( unlink(pipeParentReads) == -1 ) {
-        perror("Error deleting named pipe for reading");
-        exit(1);
-    }
-    if ( unlink(pipeParentWrites) == -1 ) {
-        perror("Error deleting named pipe for writing");
-        exit(1);
-    }
-
-    // Create reading & writing named pipes for read and write
-    if (mkfifo(pipeParentReads, RW) == -1) {
-        perror("Error creating named pipe");
-        exit(1);
-    }
-    if (mkfifo(pipeParentWrites, RW) == -1) {
-        perror("Error creating named pipe");
-        exit(1);
-    }
-
-    // Create new child process
-    if ((pid = fork()) == -1) {
-        perror("Error with fork");
-        exit(1);
-    }
-    // Child executes "child" program
-    if (pid == 0) {
-        execl("./child", "child", pipeParentReads, pipeParentWrites, dir_path, NULL);
-        perror("Error with execl");
-    }
-    // Open reading & writing named pipes for child
-    if ((readfd[i] = open(pipeParentReads, O_RDONLY)) == -1) {
-        perror("Error opening named pipe for reading");
-        exit(1);
-    }
-    if ((writefd[i] = open(pipeParentWrites, O_WRONLY)) == -1) {
-        perror("Error opening named pipe for writing");
-        exit(1);
-    }
-
-    // Update pid in parent's structure
-    childMonitor[i].pid = pid;
-
-    // Convert bufSize and bloomSize to strings
-    char bufSizeString[15];
-    sprintf(bufSizeString, "%d", bufSize);
-    char bloomSizeString[15];
-    sprintf(bloomSizeString, "%d", bloomSize);
-    // Send bufSize and bloomSize as first two messages
-    sendMessage ('1', bufSizeString, writefd[i], bufSize);
-    sendMessage ('2', bloomSizeString, writefd[i], bufSize);
-    
-    // Assign the same countries to new Monitor
-    resendCountryDirs(dir_path, numMonitors, writefd[i], childMonitor[i], bufSize);
-    printf("FINISHED RESENDING COUNTRIES\n");
 }
 
 // Send previous Monitor's countries to new Monitor
@@ -272,11 +155,6 @@ int getUserCommand(Stats* stats, int* readyMonitors, int numMonitors, ChildMonit
 
     // Get user commands
     if ( (fgets(input, size, stdin) == NULL) ) {
-        // Check if some signal's flag is on
-        // if ( (checkSignalFlagsParent(stats, input_dir, dir_path, bufSize, bloomSize, readyMonitors, numMonitors, incfd, outfd, childMonitor, accepted, rejected, bloomsHead) == 1) ) {
-        //     // SIGINT or SIGQUIT caught
-        //     return 1;
-        // }
         return -1;
     }
     input[strlen(input)-1] = '\0'; // Cut terminating '\n' from string
@@ -288,6 +166,11 @@ int getUserCommand(Stats* stats, int* readyMonitors, int numMonitors, ChildMonit
     // Get the command
     command = strtok(input, " ");
     if (!strcmp(command, "/exit")) {
+        // Send exit message to every child
+        for (int i = 0; i < numMonitors; ++i) {
+            sendMessage('!', "", sockfd[i], bufSize);
+        }
+        sleep(1);
         // Send SIGKILL signal to every child
         for (int i = 0; i < numMonitors; ++i) {
             printf("SIGKILL sent to child\n");
@@ -443,11 +326,20 @@ int getUserCommand(Stats* stats, int* readyMonitors, int numMonitors, ChildMonit
             // Find the child that controls this country
             for (int i=0; i<numMonitors; i++) {
                 for (int j=0; j<childMonitor[i].countryCount; j++) {
-                    if (!strcmp(childMonitor[i].country[j], country)) {
-                        // Send SIGUSR1 to child
-                        kill(childMonitor[i].pid, SIGUSR1);
+                    // "ChildMonitor.country": "input_dir" + "/" + "country"
+                    char* token1 = strdup(childMonitor[i].country[j]);
+                    char* token2;
+                    token1 = strtok_r(token1, "/", &token2);
+                    if ( !strcmp(token2, country) ) {
+                        (*readyMonitors)--;
+                                               
+                        // Send path for search to child
+                        sendMessage('a', childMonitor[i].country[j], sockfd[i], bufSize);
+
+                        free(token1);
                         break;
                     }
+                    free(token1);
                 }
             }
             free(country);
@@ -455,7 +347,6 @@ int getUserCommand(Stats* stats, int* readyMonitors, int numMonitors, ChildMonit
         else {
             printf("Please enter country parameter.\n");
         }
-
     }
     else if (!strcmp(command, "/searchVaccinationStatus")) {
         // Get citizenID

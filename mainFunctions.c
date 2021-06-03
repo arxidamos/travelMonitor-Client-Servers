@@ -44,12 +44,12 @@ void travelRequest (Stats* stats, int* readyMonitors, BloomFilter* head, ChildMo
                             char* token2;
                             token1 = strtok_r(token1, "/", &token2);
                             if ( !strcmp(token2, countryTo) ) {
-                                printf("Sending NO to %s\n", countryTo);
+                                // printf("Sending NO to %s\n", countryTo);
                                 sendMessage('+', "NO", sockfd[x], bufSize);
                                 free(token1);
                                 return;
                             }
-                            free(token1);                            
+                            free(token1);
                         }
                     }
                 }

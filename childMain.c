@@ -59,8 +59,6 @@ int main(int argc, char* argv[]) {
     // Get this Monitor's dirs and respective files
     MonitorDir* monitorDir = NULL;
     readDirs(&monitorDir, path, pathsNumber);
-    // printMonitorDirList(monitorDir);
-
     ////////////////////////////////////////////////////////////////////////////////////
                
     // Common structures to store records data
@@ -89,7 +87,6 @@ int main(int argc, char* argv[]) {
     // Put paths in cyclic buffer, call threads
     sendPathsToThreads(monitorDir, numThreads);
 
-
     // printRecordsList(recordsHead);
     // printBloomsList(bloomsHead);
     ////////////////////////////////////////////////////////////////////////////////////
@@ -97,6 +94,7 @@ int main(int argc, char* argv[]) {
     struct sockaddr_in clientAddr;
     unsigned int clientLength = sizeof(clientAddr);
     struct hostent* rem;
+    char hostName[_POSIX_PATH_MAX];    
     int sockfd;
     int newSockfd;
     // Create socket
@@ -131,7 +129,11 @@ int main(int argc, char* argv[]) {
         perror("Error with accept");
         exit(1);
     }
-    if ((rem = gethostbyname("localhost")) == NULL) {
+    if (gethostname(hostName, _POSIX_PATH_MAX) < 0 ) {
+        perror("Error with gethostname");
+        exit(1);
+    }
+    if ((rem = gethostbyname(hostName)) == NULL) {
         perror("Error with gethostbyname");
         exit(1);
     }
@@ -162,41 +164,8 @@ int main(int argc, char* argv[]) {
             }
 
             // Decode incoming messages
-            analyseMessage(&monitorDir, incMessage, newSockfd, &socketBufferSize, &bloomSize, &bloomsHead, &stateHead, &recordsHead, &skipVaccHead, &skipNonVaccHead, &accepted, &rejected, numThreads);
-
-            if (incMessage->code[0] == '!') {
-
-                // Once done, inform threads to finish 
-                for (int i=0; i<numThreads; i++) {
-                    // Wake all threads
-                    insertToCyclicBuffer(&cBuf, "finish");
-                    pthread_cond_signal(&condNonEmpty);
-                }
-
-                // Wait for threads to terminate
-                for (int i=0; i<numThreads; i++) {
-                    pthread_join(threads[i], 0);
-                    printf("Thread [%d] joined\n", i);
-                }
-            }
-            // if (buffer[0] == 'p') {
-                //     printf("Message received from Server %d\n", (int)getpid());
-                //     // write(newSockfd, "8", 1);
-                    
-                //     // close(sockfd);
-                //     // close(newSockfd);
-                // }
-                // if (buffer[0] == 'e') {
-                //     close(sockfd);
-                //     close(newSockfd);
-                //     // for (int i=0; i<numThreads; i++) {
-                //     //     pthread_join(threads[i], 0);
-                //     // }
-
-                //     freeCyclicBuffer(&cBuf);
-                //     freeMonitorDirList(monitorDir);
-                //     kill(getpid(), SIGKILL);
-            // }        
+            analyseMessage(&monitorDir, incMessage, sockfd, newSockfd, &socketBufferSize, &bloomSize, &bloomsHead, &stateHead, &recordsHead, &skipVaccHead, &skipNonVaccHead, &accepted, &rejected, numThreads, threads);
+     
             FD_CLR(newSockfd, &incfds);
         }
     }

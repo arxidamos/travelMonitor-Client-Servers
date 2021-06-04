@@ -44,7 +44,6 @@ void travelRequest (Stats* stats, int* readyMonitors, BloomFilter* head, ChildMo
                             char* token2;
                             token1 = strtok_r(token1, "/", &token2);
                             if ( !strcmp(token2, countryTo) ) {
-                                // printf("Sending NO to %s\n", countryTo);
                                 sendMessage('+', "NO", sockfd[x], bufSize);
                                 free(token1);
                                 return;
@@ -76,8 +75,7 @@ void travelRequest (Stats* stats, int* readyMonitors, BloomFilter* head, ChildMo
                         strcat(fullString, countryTo);
                         strcat(fullString, ";");
                         strcat(fullString, dateString);
-
-                        // Send citizenID, date to Monitor
+                        // Send citizenID, virus, country, date to Monitor
                         sendMessage('t', fullString, sockfd[i], bufSize);
                         free(fullString);
                         free(token1);

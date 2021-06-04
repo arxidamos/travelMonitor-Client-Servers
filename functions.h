@@ -68,16 +68,11 @@ void sendMessage (char code, char* body, int fd, int bufSize);
 
 // childAux.c
 void readDirs (MonitorDir** monitorDir, char** dirPath, int dirPathsNumber);
-void analyseMessage (MonitorDir** monitorDir, Message* message, int outfd, int* bufSize, int* bloomSize, BloomFilter** bloomsHead, State** stateHead, Record** recordsHead, SkipList** skipVaccHead, SkipList** skipNonVaccHead, int* accepted, int* rejected, int numThreads);
-
-
-
-void processUsr1(MonitorDir** monitorDir, int sockfd, int bufSize, char* country, int numThreads);
-
-
-
+void analyseMessage (MonitorDir** monitorDir, Message* message, int sockfd, int outfd, int* bufSize, int* bloomSize, BloomFilter** bloomsHead, State** stateHead, Record** recordsHead, SkipList** skipVaccHead, SkipList** skipNonVaccHead, int* accepted, int* rejected, int numThreads, pthread_t* threads);
+void processAddCommand(MonitorDir** monitorDir, int sockfd, int bufSize, char* country, int numThreads);
 void updateParentBlooms(BloomFilter* bloomsHead, int outfd, int bufSize);
 int compare (const void * a, const void * b);
+void createLogFileChild (MonitorDir** monitorDir, int* accepted, int* rejected);
 
 // parentAux.c
 void mapCountryDirs (char* dir_path, int numMonitors, ChildMonitor childMonitor[]);

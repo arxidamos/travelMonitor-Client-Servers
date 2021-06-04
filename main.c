@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include "functions.h"
@@ -79,6 +80,12 @@ int main(int argc, char **argv) {
         }        
 	}
 
+    // Create directory for the log file
+    if (mkdir("./log_files", RWE) == -1) {
+        perror("Error creating log_files directory");
+        exit(1);
+    }
+
     // Store pids with respective country dirs
     ChildMonitor childMonitor[numMonitors];
     // Initialize num of countries for each Monitor
@@ -92,6 +99,7 @@ int main(int argc, char **argv) {
     int sockfd[numMonitors];
     struct sockaddr_in servAddr;
     struct hostent* rem;
+    char hostName[_POSIX_PATH_MAX];
 
     // Assign countries to each Monitor
     mapCountryDirs(dir_path, numMonitors, childMonitor);
@@ -103,7 +111,12 @@ int main(int argc, char **argv) {
             exit(1);
         }
 
-        if ((rem = gethostbyname("localhost")) == NULL) {
+        if (gethostname(hostName, _POSIX_PATH_MAX) < 0 ) {
+            perror("Error with gethostname");
+            exit(1);
+        }
+
+        if ((rem = gethostbyname(hostName)) == NULL) {
             perror("Error with gethostbyname");
             exit(1);
         }

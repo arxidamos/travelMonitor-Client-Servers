@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include "functions.h"
 #include "structs.h"
 
@@ -61,7 +62,7 @@ void readDirs (MonitorDir** monitorDir, char** dirPath, int dirPathsNumber) {
 }
 
 // Analyse incoming message in Monitor
-void analyseMessage (MonitorDir** monitorDir, Message* message, int outfd, int* bufSize, int* bloomSize, BloomFilter** bloomsHead, State** stateHead, Record** recordsHead, SkipList** skipVaccHead, SkipList** skipNonVaccHead, int* accepted, int* rejected, int numThreads) {
+void analyseMessage (MonitorDir** monitorDir, Message* message, int sockfd, int outfd, int* bufSize, int* bloomSize, BloomFilter** bloomsHead, State** stateHead, Record** recordsHead, SkipList** skipVaccHead, SkipList** skipNonVaccHead, int* accepted, int* rejected, int numThreads, pthread_t* threads) {
 
     // Message 't': Parent sends travelRequest query
     if (message->code[0] == 't') {
@@ -115,13 +116,33 @@ void analyseMessage (MonitorDir** monitorDir, Message* message, int outfd, int* 
     }
     // Message 'a': Parent sends addVaccinationRecords query
     else if (message->code[0] == 'a') {
-        processUsr1(monitorDir, outfd, *bufSize, message->body, numThreads);
+        processAddCommand(monitorDir, outfd, *bufSize, message->body, numThreads);
     }
+    else if (message->code[0] == '!') {
+        // Inform threads to finish
+        createLogFileChild(monitorDir, accepted, rejected);
+        for (int i=0; i<numThreads; i++) {
+            insertToCyclicBuffer(&cBuf, "finish");
+            pthread_cond_signal(&condNonEmpty);
+        }
+        // Wait for threads to terminate
+        for (int i=0; i<numThreads; i++) {
+            pthread_join(threads[i], 0);
+            printf("Thread [%d] joined\n", i);
+        }
+        
+        freeCyclicBuffer(&cBuf);
+        freeMonitorDirList(*monitorDir);
+        if (close(sockfd) < 0) {
+            perror("Error with closing newSockfd");
+            exit(1);
+        }
+    }   
     return;
 }
 
 // Read new file in directory after SIGUSR1
-void processUsr1(MonitorDir** monitorDir, int sockfd, int bufSize, char* path, int numThreads) {
+void processAddCommand(MonitorDir** monitorDir, int sockfd, int bufSize, char* path, int numThreads) {
 
     MonitorDir* current = (*monitorDir);
     while (current) {
@@ -146,12 +167,6 @@ void processUsr1(MonitorDir** monitorDir, int sockfd, int bufSize, char* path, i
             strcat(file, "/");
             strcat(file, directory[i]->d_name);
 
-            printf("Checking file %s\n", file);
-
-
-
-            
-
             // File is not included in struct's files
             if ( !(fileInDir(current, file)) ) {
 
@@ -159,7 +174,7 @@ void processUsr1(MonitorDir** monitorDir, int sockfd, int bufSize, char* path, i
                 
                 // Add file to MonitorDir struct
                 insertFile(&current, file);
-                printf("File inserted\n");
+                printf("File data inserted\n");
                 // Put file in cyclic buffer and call threads
                 sendNewPathToThreads(file, numThreads);
 
@@ -219,4 +234,71 @@ void updateParentBlooms(BloomFilter* bloomsHead, int outfd, int bufSize) {
 // Compare two files (aux function for qsort)
 int compare (const void * a, const void * b) {
   return strcmp(*(char* const*)a, *(char* const*)b );
+}
+
+
+void createLogFileChild (MonitorDir** monitorDir, int* accepted, int* rejected) {
+    // Create file's name, inside "log_files" dir
+    char* dirName = "log_files/";
+    char* fileName = "log_file.";
+    char* fullName = malloc(sizeof(char)*(strlen(dirName) + strlen(fileName) + LENGTH + 1));
+    sprintf(fullName, "%s%s%d", dirName, fileName, (int)getpid());
+
+    // Create file
+    int filefd;
+    if ( (filefd = creat(fullName, RWE)) == -1) {
+        perror("Error with creating log_file");
+        exit(1);
+    }
+    free(fullName);
+
+    // 1st print: this Monitor's countries
+    MonitorDir* current = (*monitorDir);
+    while (current) {
+
+        // MonitorDir.country: "input_dir/" + "country"
+        char* token1 = strdup(current->country);
+        char* token2;
+        token1 = strtok_r(token1, "/", &token2);
+
+        // Keep printing to file till all countries written
+        if ( (write(filefd, token2, strlen(token2)) == -1) ) {
+            perror("Error with writing to log_file");
+            exit(1);
+        }
+        if ( (write(filefd, "\n", 1) == -1) ) {
+            perror("Error with writing to log_file");
+            exit(1);
+        }
+        free(token1);
+        current = current->next;
+    }
+
+    // 2nd print: total requests
+    char* info = "TOTAL TRAVEL REQUESTS ";
+    char* numberString = malloc((strlen(info) + LENGTH)*sizeof(char));
+    sprintf(numberString, "%s%d\n", info, (*accepted + *rejected));
+    if ( (write(filefd, numberString, strlen(numberString)) == -1) ) {
+        perror("Error with writing to log_file");
+        exit(1);
+    }
+
+    // 3rd print: accepted requests
+    info = "ACCEPTED ";
+    numberString = realloc(numberString, (strlen(info) + LENGTH)*(sizeof(char)) );
+    sprintf(numberString, "%s%d\n", info, (*accepted));
+    if ( (write(filefd, numberString, strlen(numberString)) == -1) ) {
+        perror("Error with writing to log_file");
+        exit(1);
+    }
+
+    // 4th print: rejected requests
+    info = "REJECTED ";
+    numberString = realloc(numberString, (strlen(info) + LENGTH)*(sizeof(char)) );
+    sprintf(numberString, "%s%d\n", info, (*rejected));
+    if ( write(filefd, numberString, strlen(numberString)) == -1 ) {
+        perror("Error with writing to log_file");
+        exit(1);
+    }
+    free(numberString);
 }

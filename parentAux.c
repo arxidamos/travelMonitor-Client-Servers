@@ -104,7 +104,6 @@ void analyseChildMessage(int* sockfd, Message* message, ChildMonitor* childMonit
     if (message->code[0] == 't') {
         char* countryTo;
         char* answer;
-
         // 1st token: countryTo, 2nd token: answer string
         countryTo = strtok_r(message->body, ";", &answer);
 
@@ -128,11 +127,18 @@ void analyseChildMessage(int* sockfd, Message* message, ChildMonitor* childMonit
         // Inform the Monitor in charge of countryTo
         for (int i=0; i<numMonitors; i++) {
             for (int j=0; j<childMonitor[i].countryCount; j++) {
-                if ( !strcmp(childMonitor[i].country[j], countryTo) ) {
+                // ChildMonitor.country: "input_dir/" + "country"
+                char* token1 = strdup(childMonitor[i].country[j]);
+                char* token2;
+                token1 = strtok_r(token1, "/", &token2);
+
+                if ( !strcmp(token2, countryTo) ) {
                     // Send increment counter message
                     sendMessage('+', answer, sockfd[i], bufSize);
+                    free(token1);
                     break;
                 }
+                free(token1);
             }
         }
     }
@@ -170,6 +176,9 @@ int getUserCommand(Stats* stats, int* readyMonitors, int numMonitors, ChildMonit
         for (int i = 0; i < numMonitors; ++i) {
             sendMessage('!', "", sockfd[i], bufSize);
         }
+        // Create log file
+        createLogFileParent (numMonitors, childMonitor, accepted, rejected);
+
         sleep(1);
         // Send SIGKILL signal to every child
         for (int i = 0; i < numMonitors; ++i) {
@@ -183,8 +192,6 @@ int getUserCommand(Stats* stats, int* readyMonitors, int numMonitors, ChildMonit
             printf("Child listened SIGKILL, terminated\n");
 
         }
-        // Create log file
-        // createLogFileParent (numMonitors, childMonitor, accepted, rejected);
         
         // Deallocate memory
         exitApp(stats, input_dir, dir_path, bufSize, bloomSize, readyMonitors, numMonitors, sockfd, childMonitor, accepted, rejected, bloomsHead);
@@ -392,8 +399,14 @@ void createLogFileParent (int numMonitors, ChildMonitor* childMonitor, int* acce
         // 1st print: countries
         for (int i=0; i<numMonitors; i++) {
             for (int j=0; j<childMonitor[i].countryCount; j++) {
+
+                // "ChildMonitor.country": "input_dir" + "/" + "country"
+                char* token1 = strdup(childMonitor[i].country[j]);
+                char* token2;
+                token1 = strtok_r(token1, "/", &token2);
+
                 // Keep printing to file till all countries written
-                if ( (write(filefd, childMonitor[i].country[j], strlen(childMonitor[i].country[j])) == -1) ) {
+                if ( (write(filefd, token2, strlen(token2)) == -1) ) {
                     perror("Error with writing to log_file");
                     exit(1);
                 }
@@ -401,6 +414,7 @@ void createLogFileParent (int numMonitors, ChildMonitor* childMonitor, int* acce
                     perror("Error with writing to log_file");
                     exit(1);
                 }
+                free(token1);
             }
         }
 

@@ -15,41 +15,29 @@ void sendPathsToThreads(MonitorDir* monitorDir, int numThreads) {
         }
         current = current->next;
     } 
-
-    // // Once done, inform threads to finish 
-    // for (int i=0; i<numThreads; i++) {
-    //     // Wake all threads
-    //     insertToCyclicBuffer(&cBuf, "finish");
-    //     pthread_cond_signal(&condNonEmpty);
-    // }
 }
 
 // Put new path in cyclic buffer and call threads
 void sendNewPathToThreads(char* file, int numThreads) {
     insertToCyclicBuffer(&cBuf, file);
     pthread_cond_broadcast(&condNonEmpty);
-
-    // // Once done, inform threads to finish 
-    // for (int i=0; i<numThreads; i++) {
-    //     // Wake all threads
-    //     insertToCyclicBuffer(&cBuf, "finish");
-    //     pthread_cond_signal(&condNonEmpty);
-    // }
 }
-
 
 // Read path from cyclic buffer and call processFile
 void* threadConsumer (void* ptr) {
-    printf("Thread %lu: begin=====================\n",(long)pthread_self());
+    printf("Thread %lu: begin...\n",(long)pthread_self());
     char* path;
     // Repeat until "finish" received from main thread
     while ( (strcmp(extractFromCyclicBuffer(&cBuf, &path), "finish")) ) {
         processFile(path);
+        free(path);
         pthread_cond_signal(&condNonFull);
     }
+    free(path);
+    
     // Wake up childMain one last time for each thread
     pthread_cond_signal(&condNonFull);
-    printf("Thread %lu: exit=====================\n",(long)pthread_self());
+    printf("Thread %lu: exit...\n",(long)pthread_self());
     return NULL;
 
 }
@@ -174,7 +162,7 @@ void processFile (char* filePath) {
                     bloomsHead = createBloom(bloomsHead, virus, bloomSize, k);
                     insertInBloom(bloomsHead, citizenID, virus);
                 }
-            }      
+            }
 
             // Add record in Skip List
             // Separate structure for vaccined Skip Lists
@@ -206,6 +194,6 @@ void processFile (char* filePath) {
         free(virus);
     }
     fclose(inputFile);
-    free(filePath);
+    free(text);
     return;
 }

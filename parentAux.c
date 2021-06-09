@@ -144,15 +144,6 @@ void analyseChildMessage(int* sockfd, Message* message, ChildMonitor* childMonit
     }
 }
 
-// Send previous Monitor's countries to new Monitor
-void resendCountryDirs (char* dir_path, int numMonitors, int outfd, ChildMonitor childMonitor, int bufSize) {
-    for (int i=0; i<childMonitor.countryCount; i++) {
-        sendMessage('C', childMonitor.country[i], outfd, bufSize);
-    }
-    // When mapping ready, send 'F' message
-    sendMessage('F', "", outfd, bufSize);
-}
-
 // Receive commands from user
 int getUserCommand(Stats* stats, int* readyMonitors, int numMonitors, ChildMonitor* childMonitor, BloomFilter* bloomsHead, char* dir_path, DIR* input_dir, int* sockfd, int bufSize, int bloomSize, int* accepted, int* rejected) {
     char* command = NULL;
@@ -179,17 +170,10 @@ int getUserCommand(Stats* stats, int* readyMonitors, int numMonitors, ChildMonit
         // Create log file
         createLogFileParent (numMonitors, childMonitor, accepted, rejected);
 
-        sleep(1);
-        // Send SIGKILL signal to every child
-        for (int i = 0; i < numMonitors; ++i) {
-            printf("SIGKILL sent to child\n");
-            kill(childMonitor[i].pid, SIGKILL);
-        }
-
         // Wait till every child finishes
         for (int i = 0; i < numMonitors; ++i) {
             waitpid(-1, NULL, 0);
-            printf("Child listened SIGKILL, terminated\n");
+            printf("Child %d succesfully exited\n", i);
 
         }
         
@@ -339,7 +323,7 @@ int getUserCommand(Stats* stats, int* readyMonitors, int numMonitors, ChildMonit
                     token1 = strtok_r(token1, "/", &token2);
                     if ( !strcmp(token2, country) ) {
                         (*readyMonitors)--;
-                                               
+
                         // Send path for search to child
                         sendMessage('a', childMonitor[i].country[j], sockfd[i], bufSize);
 

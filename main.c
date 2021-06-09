@@ -10,7 +10,6 @@
 #include "functions.h"
 #include "structs.h"
 
-
 int main(int argc, char **argv) {
     int numMonitors;
     int socketBufferSize;
@@ -77,7 +76,7 @@ int main(int argc, char **argv) {
 				fprintf(stderr, "Error: Number of threads must be a positive number.\n");
 				exit(EXIT_FAILURE);
 			}
-        }        
+        }
 	}
 
     // Create directory for the log file
@@ -104,7 +103,8 @@ int main(int argc, char **argv) {
     // Assign countries to each Monitor
     mapCountryDirs(dir_path, numMonitors, childMonitor);
 
-    for (int i=0; i<numMonitors; i++) {        
+    // Set up connections
+    for (int i=0; i<numMonitors; i++) {
         // Create socket
         if ((sockfd[i] = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
             perror("Error creating socket");
@@ -120,7 +120,7 @@ int main(int argc, char **argv) {
             perror("Error with gethostbyname");
             exit(1);
         }
-        // Assign address and port   
+        // Assign address and port
         memset(&servAddr, 0, sizeof(servAddr));
         servAddr.sin_family = AF_INET;
         memcpy(&(servAddr.sin_addr.s_addr), rem->h_addr, rem->h_length);
@@ -128,7 +128,7 @@ int main(int argc, char **argv) {
     
         // Form the args array that we pass to execv
         int pathArgs = childMonitor[i].countryCount; // Number of path args
-        int restofArgs = 12;    // Number of rest of args (and NULL)
+        int restofArgs = 12; // Number of rest of args (and NULL)
         int length = pathArgs + restofArgs;
         char* argsArray[length];
         insertExecvArgs(argsArray, port, numThreadsString, socketBufferSizeString, cyclicBufferSizeString, bloomSizeString, dir_path, childMonitor, i, length);

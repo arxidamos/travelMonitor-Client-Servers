@@ -105,16 +105,15 @@ void freeCyclicBuffer (CyclicBuffer* cBuf);
 
 // threadAux.c
 void sendPathsToThreads(MonitorDir* monitorDir, int numThreads);
+void sendNewPathToThreads(char* file, int numThreads);
 void* threadConsumer (void* ptr);
 void processFile (char* filePath);
 
-// Mutex, cyclic buffer, condition vars
+// Extern common vars and structures
 extern CyclicBuffer cBuf;
 extern pthread_mutex_t mtx;
 extern pthread_cond_t condNonEmpty;
 extern pthread_cond_t condNonFull;
-
-// Child's common structures
 extern BloomFilter* bloomsHead;
 extern State* stateHead;
 extern Record* recordsHead;
@@ -122,6 +121,4 @@ extern SkipList* skipVaccHead;
 extern SkipList* skipNonVaccHead;
 extern int bloomSize;
 
-
-void sendNewPathToThreads(char* file, int numThreads);
 #endif

@@ -10,7 +10,7 @@ void initCyclicBuffer (CyclicBuffer* cBuf, int cyclicBufferSize) {
     cBuf->start = 0;
     cBuf->end = -1;
     cBuf->size = cyclicBufferSize;
-    cBuf->paths =  malloc(_POSIX_PATH_MAX);
+    cBuf->paths = malloc(_POSIX_PATH_MAX);
     cBuf->pathCount = 0;
 }
 
@@ -43,9 +43,9 @@ char* extractFromCyclicBuffer (CyclicBuffer* cBuf, char** path) {
     // Extract path from cyclic buffer's 'start' position
     (*path) = malloc( strlen(cBuf->paths[cBuf->start]) + 1 );
     strcpy( (*path), cBuf->paths[cBuf->start] );
+    free(cBuf->paths[cBuf->start]);
     cBuf->start = (cBuf->start + 1) % (cBuf->size);
     cBuf->pathCount--;
-
     pthread_mutex_unlock(&mtx);
 
     return (*path);

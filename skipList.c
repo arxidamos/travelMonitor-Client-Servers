@@ -207,7 +207,6 @@ void removeFromSkip (SkipList* skipListHead, SkipNode* node) {
         lastVisited[level] = current;
         // No more nodes on this level
         if (current->next[level] == NULL) {
-            // printf("reached level #%d end\n", level);
             level--;
         }
         // More nodes on this level

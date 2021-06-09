@@ -12,19 +12,19 @@
 #include "structs.h"
 #include "functions.h"
 
+// Buffer, mutex, condition vars
 CyclicBuffer cBuf;
 pthread_mutex_t mtx;
 pthread_cond_t condNonEmpty;
 pthread_cond_t condNonFull;
 
-// Structures to store records data
+// Common structures to store records data
 BloomFilter* bloomsHead;
 State* stateHead;
 Record* recordsHead;
 SkipList* skipVaccHead;
 SkipList* skipNonVaccHead;
 int bloomSize;
-
 
 int main(int argc, char* argv[]) {
     int port, numThreads, socketBufferSize, cyclicBufferSize;
@@ -53,15 +53,13 @@ int main(int argc, char* argv[]) {
     // Get paths (after first 10 args)
     for (int i=11; i<argc; i++) {
         path[index] = argv[i];
-        // printf("path[%d]=%s\n", index, path[index]);
         index++;
     }
     // Get this Monitor's dirs and respective files
     MonitorDir* monitorDir = NULL;
     readDirs(&monitorDir, path, pathsNumber);
-    ////////////////////////////////////////////////////////////////////////////////////
-               
-    // Common structures to store records data
+
+    // Initialise structures
     bloomsHead = NULL;
     stateHead = NULL;
     recordsHead = NULL;
@@ -87,14 +85,12 @@ int main(int argc, char* argv[]) {
     // Put paths in cyclic buffer, call threads
     sendPathsToThreads(monitorDir, numThreads);
 
-    // printRecordsList(recordsHead);
-    // printBloomsList(bloomsHead);
-    ////////////////////////////////////////////////////////////////////////////////////
+    // Set up connection
     struct sockaddr_in servAddr;
     struct sockaddr_in clientAddr;
     unsigned int clientLength = sizeof(clientAddr);
     struct hostent* rem;
-    char hostName[_POSIX_PATH_MAX];    
+    char hostName[_POSIX_PATH_MAX];
     int sockfd;
     int newSockfd;
     // Create socket
@@ -137,12 +133,14 @@ int main(int argc, char* argv[]) {
         perror("Error with gethostbyname");
         exit(1);
     }
-    // Report ready to parent-client
+    // Send Bloom Filters (done by threads) to parent-client
     updateParentBlooms(bloomsHead, newSockfd, socketBufferSize);
+    // Report ready to parent-client
     sendMessage('F', "", newSockfd, socketBufferSize);
 
+    // Keep receiving from parent with select
     fd_set incfds;
-
+    
     while (1) {
         FD_ZERO(&incfds);
         FD_SET(newSockfd, &incfds);
@@ -165,7 +163,10 @@ int main(int argc, char* argv[]) {
 
             // Decode incoming messages
             analyseMessage(&monitorDir, incMessage, sockfd, newSockfd, &socketBufferSize, &bloomSize, &bloomsHead, &stateHead, &recordsHead, &skipVaccHead, &skipNonVaccHead, &accepted, &rejected, numThreads, threads);
-     
+            free(incMessage->code);
+            free(incMessage->body);
+            free(incMessage);
+
             FD_CLR(newSockfd, &incfds);
         }
     }

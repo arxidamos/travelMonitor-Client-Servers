@@ -63,7 +63,6 @@ void readDirs (MonitorDir** monitorDir, char** dirPath, int dirPathsNumber) {
 
 // Analyse incoming message in Monitor
 void analyseMessage (MonitorDir** monitorDir, Message* message, int sockfd, int outfd, int* bufSize, int* bloomSize, BloomFilter** bloomsHead, State** stateHead, Record** recordsHead, SkipList** skipVaccHead, SkipList** skipNonVaccHead, int* accepted, int* rejected, int numThreads, pthread_t* threads) {
-
     // Message 't': Parent sends travelRequest query
     if (message->code[0] == 't') {
         char* citizenID;
@@ -118,6 +117,7 @@ void analyseMessage (MonitorDir** monitorDir, Message* message, int sockfd, int 
     else if (message->code[0] == 'a') {
         processAddCommand(monitorDir, outfd, *bufSize, message->body, numThreads);
     }
+    // Message '!': Parent informs to exit
     else if (message->code[0] == '!') {
         // Inform threads to finish
         createLogFileChild(monitorDir, accepted, rejected);
@@ -128,29 +128,40 @@ void analyseMessage (MonitorDir** monitorDir, Message* message, int sockfd, int 
         // Wait for threads to terminate
         for (int i=0; i<numThreads; i++) {
             pthread_join(threads[i], 0);
-            printf("Thread [%d] joined\n", i);
         }
         
+        // Free allocated memory, close socket
         freeCyclicBuffer(&cBuf);
         freeMonitorDirList(*monitorDir);
         if (close(sockfd) < 0) {
             perror("Error with closing newSockfd");
             exit(1);
         }
-    }   
+        free(message->code);
+        free(message->body);
+        free(message);
+        freeStateList(*stateHead);
+        freeRecordList(*recordsHead);
+        freeSkipLists(*skipNonVaccHead);
+        freeSkipLists(*skipVaccHead);
+        freeBlooms(*bloomsHead);
+
+        // exit
+        exit(0);
+    }
     return;
 }
 
-// Read new file in directory after SIGUSR1
+// Read new file in directory
 void processAddCommand(MonitorDir** monitorDir, int sockfd, int bufSize, char* path, int numThreads) {
-
+    // Find MonitorDir in charge of country
     MonitorDir* current = (*monitorDir);
     while (current) {
         if ( !strcmp(path, current->country) ) {
             break;
         }
         current = current->next;
-    }    
+    }
 
     // Get each dir's files alphabetically
     struct dirent** directory;
@@ -169,7 +180,6 @@ void processAddCommand(MonitorDir** monitorDir, int sockfd, int bufSize, char* p
 
             // File is not included in struct's files
             if ( !(fileInDir(current, file)) ) {
-
                 newFileFound = 1;
                 
                 // Add file to MonitorDir struct
@@ -183,8 +193,14 @@ void processAddCommand(MonitorDir** monitorDir, int sockfd, int bufSize, char* p
                 // Report process finished to Parent
                 sendMessage('F', "", sockfd, bufSize);
             }
+            free(file);
         }
     }
+    for (int i=0; i<filesCount; i++) {
+        free(directory[i]);
+    }
+    free(directory);
+    // Report process finished to waiting Parent, even if no new file added
     if (!newFileFound) {
         // Report process finished to Parent
         sendMessage('F', "", sockfd, bufSize);
@@ -225,6 +241,7 @@ void updateParentBlooms(BloomFilter* bloomsHead, int outfd, int bufSize) {
         // Send BF info message to Parent
         sendMessage('B', charArray, outfd, bufSize);
         free(indices);
+        free(bArray);
         free(charArray);
 
         current = current->next;
@@ -236,7 +253,7 @@ int compare (const void * a, const void * b) {
   return strcmp(*(char* const*)a, *(char* const*)b );
 }
 
-
+// Print stats to a log file
 void createLogFileChild (MonitorDir** monitorDir, int* accepted, int* rejected) {
     // Create file's name, inside "log_files" dir
     char* dirName = "log_files/";

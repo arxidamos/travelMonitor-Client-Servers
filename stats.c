@@ -36,7 +36,7 @@ void addToStats(Stats* stats, char* virus, char* countryTo, Date date) {
 
 // Store if request's hit or missed
 void informStats (Stats* stats, int hitMiss) {
-    (*stats).count++;    
+    (*stats).count++;
     (*stats).hitAndMiss = realloc((*stats).hitAndMiss, (sizeof(int)*(*stats).count));
     (*stats).hitAndMiss[(*stats).count-1] = hitMiss; // 0: request rejected, 1: accepted
 }
@@ -46,7 +46,6 @@ void freeStats(Stats* stats) {
     for (int i=0; i<(*stats).count; i++) {
         free((*stats).country[i]);
         free((*stats).virus[i]);
-        // free((*stats).date);
     }
 
     free((*stats).country);

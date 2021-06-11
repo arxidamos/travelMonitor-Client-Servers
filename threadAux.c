@@ -37,13 +37,16 @@ void* threadConsumer (void* ptr) {
     
     // Wake up childMain one last time for each thread
     pthread_cond_signal(&condNonFull);
-    printf("Thread %lu: exit...\n",(long)pthread_self());
+    // printf("Thread %lu: exit...\n",(long)pthread_self());
     return NULL;
 
 }
 
 // Read file and store its data
 void processFile (char* filePath) {
+
+    pthread_mutex_lock(&mtx);
+
     // Initialize variables
     FILE* inputFile;
     size_t textSize;
@@ -195,5 +198,8 @@ void processFile (char* filePath) {
     }
     fclose(inputFile);
     free(text);
+
+    pthread_mutex_unlock(&mtx);
+
     return;
 }

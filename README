@@ -1,0 +1,116 @@
+Ανδρεάδης Δημοσθένης
+Α.Μ. 1115201400321
+
+Εργασία 3
+
+Η εργασία περιλαμβάνει τα εξής αρχεία:
+main.c          : Υλοποίηση της main του travelMonitorClient
+childMain.c	    : Υλοποίηση της main του monitorServer
+parentAux.c	    : Βοηθητικές συναρτήσεις του travelMonitorClient
+childAux.c	    : Βοηθητικές συναρτήσεις των monitorServer
+parentSignals.c	: Συναρτήσεις διαχείρισης σημάτων του travelMonitor
+childSignals.c	: Συναρτήσεις διαχείρισης σημάτων των monitorServer
+communication.c	: Συναρτήσεις για την επικοινωνία μεταξύ travelMonitor και monitorServer
+monitorDirList.c: Συναρτήσεις για τη δομή με την οποία τηρούν τα directories τους τα monitorServer
+stats.c		    : Συναρτήσεις για τη δομή των στατιστικών του travelMonitorClient
+mainFunctions.c : Συναρτήσεις για τις εντολές που υποβάλλει ο χρήστης
+stateList.c     : Συναρτήσεις για τη δομή των χωρών
+recordList.c	: Συναρτήσεις για τη δομή των Records
+bloomFilter.c	: Συναρτήσεις για τα Bloom Filter
+skipList.c	    : Συναρτήσεις για τις Skip List
+structs.h       : Οι δομές των εφαρμογών
+functions.h     : Δηλώσεις των συναρτήσεων
+Makefile	    : Μake και δημιουργία των executable travelMonitorClient και monitorServer
+cyclicBuffer.c	: Συναρτήσεις για το cyclic buffer
+threadAux.c	    : Συναρτήσεις για τα Threads και τη δοσοληψία τους με το cyclic buffer
+
+Χρησιμοποιούνται οι δομές:
+- Date, StateList, RecordList (από τη HW1)
+- Message, ChildMonitor, MonitorDir, Stats, (από τη HW2)
+- CyclicBuffer	: Η δομή του cyclic buffer, που τηρεί τα τρέχοντα paths και θέση εισόδου και θέση εξόδου στοιχείων.
+
+Α) Εφαρμογή travelMonitorClient
+
+--- Ροή εκτέλεσης ---
+Ξεκινώντας, η εφαρμογή travelMonitorClient:
+- διαβάζει τα cl arguments
+- μοιράζει round-robin (αποθηκεύοντας σε μια δομή) τις χώρες που πρόκειται να στείλει στους Server
+- δημιουργεί από ένα socket για συνομιλία με τον κάθε Server
+- κάνει fork numMonitor παιδιά, που καλούν με execv (περνόντας μεταξύ άλλων τις χώρες) την εφαρμογή monitorServer
+- περιμένει το setάρισμα του socket από την πλευρά του κάθε Server, και κάνει connect.
+- δέχεται τα BloomFilter μόλις τελειώσει την επεξεργασία τους το κάθε Server (μέσω των Threads του)
+- ξεκινάει να δέχεται εντολές που περνάει ο χρήστης
+- σε περίπτωση που χρειαστεί πληροφορία από τα monitorServer, μπαίνει σε κατάσταση αναμονής με select()
+- μόλις δοθεί η αντίστοιχη εντολή από τον χρήστη, επικοινωνεί μέσω socket με τους Server, τους αναμένει να τερματίσουν, τυπώνει σε log file τα statistics και τερματίζει
+
+--- Πρωτόκολλο επικοινωνίας ---
+(Όπως στη HW2)
+
+--- Αποστολή BloomFilter ---
+(Όπως στη HW2)
+
+--- Έλεγχοι ---
+(Όπως στις HW1 και HW2)
+
+Β) Εφαρμογή monitorServer
+
+--- Ροή εκτέλεσης ---
+
+Η εφαρμογή ξεκινάει μόλις την καλέσει το κάθε child process που γίνεται fork από την travelMonitorClient parent process, και προχωράει ως εξής:
+- διαβάζει τα cl arguments που του περνάει το parent
+- δημιουργεί έναν κυκλικό buffer και numThreads Threads
+- περνάει μέσω buffer στα Threads τα paths
+- τα Threads διαβάζουν ένα αρχείο το καθένα, και γεμίζουν τις κοινόχρηστες δομές του monitorServer
+- μόλις ολοκληρωθεί η διαδικασία γεμίσματος, δημιουργείται ένα socket
+- συνδέεται μέσω socket με τον travelMonitorClient και του στέλνει τα BloomFilter
+- αναμένει μηνύματα από τον travelMonitorClient για τυχόν queries του χρήστη
+- μόλις λάβει το αντίστοιχο μήνυμα, απελευθερώνει σωστά τη δεσμευμένη μνήμη, τυπώνει σε log file τα statistics και τερματίζει
+
+--- Χρήση Cyclic Buffer και Threads ---
+Χρησιμοποιούνται ένα mutex και 2 condition variables για τον συγχρονισμό πρόσβασης στον κυκλικό buffer των Threads. Συγκεκριμένα, η διαδικασία επικοινωνίας έχει ως εξής:
+
+- Γίνεται initialise των mutex και condition variables.
+- Δημιουργούνται τα Threads, με συνάρτηση start routine τη συνάρτηση threadConsumer.
+- Καλείται η sendPathsToThreads, στην οποία:
+	- γίνεται επαναλαμβανόμενα εισαγωγή χωρών στον buffer μέσω της insertToCyclicBuffer,
+	- γίνεται broadcast στην non-empty condition variable
+- Η insertToCyclicBuffer:
+	- κλειδώνει το mutex,
+	- περιμένει μέχρι να αδειάσει θέση στον buffer με την non-full condition variable,
+	- περνάει path χώρας στον buffer,
+	- ξεκλειδώνει το mutex.
+- Από τη threadConsumer, ένα thread κάθε φορά (μόλις ενεργοποιείται και η non-empty condition variable):
+	- εξάγει path χώρας με την extractFromCyclicBuffer,
+	- κλειδώνει το mutex,		
+	- διαβάζει το αρχείο-path,
+	- γεμίζει τις κοινόχρηστες δομές,
+	- ξεκλειδώνει το mutex.
+	- κάνει signal στο main thread με την non-full condition variable
+- Η extractFromCyclicBuffer:
+	- κλειδώνει το mutex,
+	- περιμένει μέχρι να γεμίσει θέση (με path) στον buffer με την non-empty condition variable,
+	- εξάγει path χώρας στον buffer,
+	- ξεκλειδώνει το mutex.
+	- επιστρέφει το path στη threadConsumer.
+
+Ομοίως γίνεται η διαδικασία στην περίπτωση νέου αρχείου μέσω της addVaccinationRecords.
+(Έχει γίνει χρήση του υλικού που αναφέρθηκε στο piazza)
+
+--- Έλεγχοι ---
+(Όπως στις HW1 και HW2)
+
+
+Γ) Εκτέλεση εφαρμογών
+Γίνεται κάθε φορά σωστή αποδέσμευση της μνήμης που χρησιμοποιούν οι εφαρμογές, με ενδεικτικές εκτελέσεις:
+
+- (10 monitor, 8 threads, μέγεθος buffer 10, μέγεθος cyclic buffer 4, μέγεθος Bloom 100.000, 196 φάκελοι * 4 αρχεία)
+make clean
+make
+valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --trace-children=yes ./travelMonitorClient -m 10 -b 10 -c 4 -s 100000 -i input_dir/ -t 8
+
+και 
+
+- (3 monitor, 5 threads, μέγεθος buffer 10, μέγεθος cyclic buffer 2, μέγεθος Bloom 100.000, 25 φάκελοι * 4 αρχεία)
+make clean
+make
+valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --trace-children=yes ./travelMonitorClient -m 3 -b 10 -c 2 -s 100000 -i test_dir/ -t 5
